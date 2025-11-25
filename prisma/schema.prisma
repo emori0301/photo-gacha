@@ -1,0 +1,129 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  // The `url` property is deprecated in Prisma schema files as of Prisma 5.14/7.
+  // Move your connection URL to prisma.config.ts or set it in your PrismaClient constructor.
+  // See: https://pris.ly/d/config-datasource and https://pris.ly/d/prisma7-client-config
+  // url      = env("DATABASE_URL")
+}
+
+enum Rarity {
+  N
+  R
+  SR
+  SSR
+  UR
+}
+
+model Image {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  imageUrl    String   // 画像のパス（public/uploads/...）
+  rarity      Rarity
+  userId      String?  // 登録したユーザーID
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // コレクションとのリレーション
+  collections UserCollection[]
+  // パックとのリレーション
+  packImages  PackImage[]
+  
+  @@index([userId])
+}
+
+model Pack {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  thumbnailUrl String? // サムネイル画像のURL
+  price       Int?     // 仮想通貨やポイント（オプション）
+  rarityRates String? // レア度ごとの排出率（JSON形式: {"N": 40, "R": 30, "SR": 20, "SSR": 8, "UR": 2}）
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // パックに含まれる画像（5枚）
+  packImages  PackImage[]
+}
+
+model PackImage {
+  id        String   @id @default(cuid())
+  packId    String
+  pack      Pack     @relation(fields: [packId], references: [id], onDelete: Cascade)
+  imageId   String
+  image     Image    @relation(fields: [imageId], references: [id])
+  weight    Int      @default(1) // レア度の重み（抽選用）
+  
+  @@unique([packId, imageId])
+  @@index([packId])
+}
+
+model UserCollection {
+  id        String   @id @default(cuid())
+  userId    String   // セッションIDやユーザーID
+  imageId   String
+  image     Image    @relation(fields: [imageId], references: [id])
+  count     Int      @default(1) // 獲得した枚数
+  obtainedAt DateTime @default(now())
+  
+  @@unique([userId, imageId])
+  @@index([userId])
+}
+
+// NextAuth用のモデル
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  points        Int       @default(10) // ポイント（デフォルト10）
+  accounts      Account[]
+  sessions      Session[]
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
