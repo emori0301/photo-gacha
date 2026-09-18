@@ -4,9 +4,9 @@ import React, { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc/client";
 import { Package, Trash2 } from "lucide-react";
+// @ts-expect-error: Module './pack-editor' might be missing type declaration
 import { PackEditor } from "./pack-editor";
 import { Button } from "./ui/button";
-
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
@@ -50,6 +50,7 @@ export function PackList() {
             <div className="relative h-full overflow-hidden flex flex-col">
               {pack.thumbnailUrl ? (
                 <div className="flex-1 relative">
+                  {/** biome-ignore lint/performance/noImgElement: <explanation> */}
                   <img
                     src={pack.thumbnailUrl}
                     alt={pack.name}

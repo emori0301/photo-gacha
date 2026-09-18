@@ -18,7 +18,7 @@ import {
   TOTAL_RARITY_RATE,
   RARITY_RATE_TOLERANCE,
 } from "@/lib/constants/rarity";
-import { PACK_OPEN_COST, PACK_CREATE_REWARD } from "@/lib/constants/points";
+import { PACK_CREATE_REWARD } from "@/lib/constants/points";
 import { uploadImage } from "@/lib/utils/image-upload";
 
 type SelectedImage = {
