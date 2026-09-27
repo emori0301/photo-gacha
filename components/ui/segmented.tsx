@@ -1,6 +1,7 @@
 "use client";
 
 import type * as React from "react";
+import { useRef } from "react";
 import { cn } from "@/lib/utils";
 
 /** ラジオボタン相当の選択 UI（矢印キーで移動できる） */
@@ -19,13 +20,19 @@ export function Segmented<T extends string>({
   className?: string;
   size?: "sm" | "md";
 }) {
+  const group = useRef<HTMLDivElement>(null);
   const move = (dir: 1 | -1) => {
     const i = options.findIndex((o) => o.value === value);
-    const next = options[(i + dir + options.length) % options.length];
-    onChange(next.value);
+    const nextIndex = (i + dir + options.length) % options.length;
+    onChange(options[nextIndex].value);
+    // 選択と一緒にフォーカスも移す（roving tabindex）
+    group.current
+      ?.querySelectorAll<HTMLButtonElement>('[role="radio"]')
+      [nextIndex]?.focus();
   };
   return (
     <div
+      ref={group}
       role="radiogroup"
       aria-label={label}
       className={cn(

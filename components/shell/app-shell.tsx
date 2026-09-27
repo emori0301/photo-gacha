@@ -37,7 +37,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-40 border-b-2 border-ink bg-paper/92 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4">
+        <div className="mx-auto flex h-16 max-w-6xl items-center gap-2 px-4 sm:gap-4">
           <Link href="/" aria-label="PhotoGacha ホーム" className="shrink-0">
             <Logo />
           </Link>
@@ -67,8 +67,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </ul>
           </nav>
 
-          <div className="ml-auto flex items-center gap-2 md:ml-0">
-            <Link href="/earn" aria-label="ポイントを貯める">
+          <div className="ml-auto flex items-center gap-1 sm:gap-2 md:ml-0">
+            <Link
+              href="/earn"
+              aria-label={`所持ポイント ${me?.points ?? "—"}pt（ポイントを貯める）`}
+            >
               <PointsPill points={me?.points} />
             </Link>
             <div className="hidden items-center gap-1 lg:flex">

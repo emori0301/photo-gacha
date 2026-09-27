@@ -18,6 +18,7 @@ import { createTRPCRouter, protectedProcedure } from "@/lib/trpc/server";
 import { uploadUrlSchema } from "@/lib/validation";
 import { prismaErrorCode, refundBonusQueries } from "@/server/points";
 import { cleanupUpload, ownsUpload } from "@/server/uploads";
+import { creatorNames } from "@/server/users";
 
 const ratesSchema = z
   .object({
@@ -109,21 +110,6 @@ function notFoundIfMissing(error: unknown) {
     });
   }
   return error;
-}
-
-async function creatorNames(
-  prisma: Pick<PrismaClient, "user">,
-  ids: (string | null)[],
-) {
-  const unique = [...new Set(ids.filter((id): id is string => !!id))];
-  if (unique.length === 0) return new Map<string, string>();
-  const users = await prisma.user.findMany({
-    where: { id: { in: unique } },
-    select: { id: true, name: true, email: true },
-  });
-  return new Map(
-    users.map((u) => [u.id, u.name || u.email?.split("@")[0] || "名無し"]),
-  );
 }
 
 export const packRouter = createTRPCRouter({

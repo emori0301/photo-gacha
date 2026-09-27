@@ -94,6 +94,10 @@ export function GachaView() {
         open.mutateAsync({ packId: selected.id }),
         wait(900),
       ]);
+      // 途中で画面を離れても図鑑などが最新になるよう、結果が出た時点で更新する
+      void utils.collection.invalidate();
+      void utils.pack.list.invalidate();
+      void utils.image.mine.invalidate();
       utils.user.me.setData(undefined, (old) =>
         old ? { ...old, points: res.points } : old,
       );
@@ -121,9 +125,19 @@ export function GachaView() {
   const finish = () => {
     setRevealOpen(false);
     setPhase("idle");
-    void utils.pack.list.invalidate();
-    void utils.collection.invalidate();
   };
+
+  // 結果を見る前に別の画面へ移動した場合も、引いたカードは図鑑に入っていることを伝える
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
+  useEffect(
+    () => () => {
+      if (phaseRef.current === "capsule" || phaseRef.current === "opening") {
+        toast("引いたカードは図鑑に追加されています");
+      }
+    },
+    [],
+  );
 
   const again = () => {
     finish();

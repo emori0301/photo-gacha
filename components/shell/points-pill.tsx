@@ -32,7 +32,7 @@ export function PointsPill({
   return (
     <div
       className={cn(
-        "relative inline-flex h-10 items-center gap-2 rounded-full border-2 border-ink bg-mustard pr-3.5 pl-1.5 shadow-hard-sm",
+        "relative inline-flex h-10 items-center gap-1.5 rounded-full border-2 border-ink bg-mustard pr-3 pl-1.5 shadow-hard-sm sm:gap-2 sm:pr-3.5",
         className,
       )}
       aria-live="polite"

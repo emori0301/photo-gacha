@@ -29,7 +29,11 @@ export default defineConfig({
         viewport: { width: 1280, height: 860 },
       },
     },
-    { name: "mobile", use: { ...devices["Pixel 7"] } },
+    {
+      // 小さめの Android 端末（幅 360px）で崩れないことを確認する
+      name: "mobile",
+      use: { ...devices["Pixel 7"], viewport: { width: 360, height: 740 } },
+    },
   ],
   webServer: {
     command:

@@ -3,7 +3,7 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { RotateCcw, X } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CardBack,
   CountBadge,
@@ -62,6 +62,7 @@ export function RevealOverlay({
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [summary, setSummary] = useState(false);
+  const mainButton = useRef<HTMLButtonElement>(null);
 
   // 新しい結果が来たら最初から
   useEffect(() => {
@@ -95,11 +96,19 @@ export function RevealOverlay({
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-[#171412]/97 backdrop-blur-sm data-[state=open]:animate-fade-in" />
         <DialogPrimitive.Content
           className="fixed inset-0 z-50 flex flex-col text-paper outline-none"
+          // 開いたら「めくる」ボタンにフォーカスし、スペース/Enter でめくれるようにする
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            mainButton.current?.focus();
+          }}
           onKeyDown={(e) => {
             if (summary) return;
-            if (e.key === " " || e.key === "Enter" || e.key === "ArrowRight") {
-              // ボタンにフォーカスがあるときはボタン側の動作に任せる
-              if ((e.target as HTMLElement).tagName === "BUTTON") return;
+            const onButton = (e.target as HTMLElement).tagName === "BUTTON";
+            // ボタン上のスペース/Enter はボタン自身の動作に任せる
+            if (
+              e.key === "ArrowRight" ||
+              (!onButton && (e.key === " " || e.key === "Enter"))
+            ) {
               e.preventDefault();
               advance();
             }
@@ -272,6 +281,7 @@ export function RevealOverlay({
               </div>
 
               <Button
+                ref={mainButton}
                 variant="yellow"
                 size="lg"
                 onClick={advance}
@@ -280,7 +290,7 @@ export function RevealOverlay({
                 {!flipped ? "めくる" : isLast ? "結果を見る" : "つぎのカード"}
               </Button>
               <p className="hidden text-xs text-paper/50 sm:block">
-                スペースキーでもめくれます
+                スペース・Enter・→ キーでもめくれます
               </p>
             </div>
           ) : (

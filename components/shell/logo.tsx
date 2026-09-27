@@ -39,8 +39,10 @@ export function CapsuleMark({
 export function Logo({ className }: { className?: string }) {
   return (
     <span className={cn("inline-flex items-center gap-2", className)}>
-      <CapsuleMark />
-      <span className="font-display text-xl tracking-wide">PhotoGacha</span>
+      <CapsuleMark className="size-7 sm:size-8" />
+      <span className="font-display text-lg tracking-wide sm:text-xl">
+        PhotoGacha
+      </span>
     </span>
   );
 }

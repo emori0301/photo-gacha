@@ -59,7 +59,10 @@ test("登録 → カード作成 → パック作成 → ガチャ → 図鑑", 
 }, info) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+  page.on("response", (r) => {
+    if (r.status() >= 400)
+      errors.push(`${r.status()} ${r.request().method()} ${r.url()}`);
+  });
 
   await register(page, "tester");
   await expectNoHorizontalOverflow(page);
@@ -135,7 +138,20 @@ test("登録 → カード作成 → パック作成 → ガチャ → 図鑑", 
   // もう一回
   await reveal.getByRole("button", { name: /もう一回/ }).click();
   await page.getByRole("button", { name: "カプセルを開ける" }).click();
+  // 開いた直後のスペースは「全部めくる」ではなく 1 枚目をめくる
+  await expect(
+    page.getByRole("dialog").getByRole("button", { name: "めくる", exact: true }),
+  ).toBeFocused();
   await page.keyboard.press("Space");
+  await expect(
+    page.getByRole("dialog").getByRole("button", { name: "つぎのカード" }),
+  ).toBeVisible();
+  await page.keyboard.press("ArrowRight");
+  await expect(
+    page
+      .getByRole("dialog")
+      .getByRole("button", { name: "めくる", exact: true }),
+  ).toBeVisible();
   await page
     .getByRole("dialog")
     .getByRole("button", { name: "全部めくる" })
@@ -172,15 +188,16 @@ test("登録 → カード作成 → パック作成 → ガチャ → 図鑑", 
     page.getByRole("button", { name: /受け取り済み/ }),
   ).toBeVisible();
   const shutter = page.getByRole("button", { name: /シャッターを切る/ });
-  for (let i = 0; i < 10; i++) await shutter.click();
-  await expect(page.getByText("今回 +1pt")).toBeVisible();
+  // 素早く 20 回押しても、2 回目は「現像中」で待ってから受け取れる
+  for (let i = 0; i < 20; i++) await shutter.click();
+  await expect(page.getByText("今回 +2pt")).toBeVisible({ timeout: 10_000 });
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     path: `test-results/${info.project.name}-earn.png`,
     fullPage: true,
   });
 
-  expect(errors).toEqual([]);
+  expect(errors, errors.join("\n")).toEqual([]);
 });
 
 test("ログイン・ログアウト・エラー表示", async ({ page }) => {

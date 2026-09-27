@@ -1,5 +1,6 @@
 import { RARITY_LIST, type Rarity } from "@/lib/constants/rarity";
 import { createTRPCRouter, protectedProcedure } from "@/lib/trpc/server";
+import { creatorNames } from "@/server/users";
 
 export const collectionRouter = createTRPCRouter({
   mine: protectedProcedure.query(async ({ ctx }) => {
@@ -23,14 +24,10 @@ export const collectionRouter = createTRPCRouter({
       },
     });
 
-    const creatorIds = [
-      ...new Set(items.map((i) => i.image.userId).filter((id) => id !== null)),
-    ];
-    const creators = await ctx.prisma.user.findMany({
-      where: { id: { in: creatorIds } },
-      select: { id: true, name: true },
-    });
-    const creatorName = new Map(creators.map((u) => [u.id, u.name]));
+    const creatorName = await creatorNames(
+      ctx.prisma,
+      items.map((i) => i.image.userId),
+    );
 
     return items.map(({ image, ...item }) => ({
       ...item,

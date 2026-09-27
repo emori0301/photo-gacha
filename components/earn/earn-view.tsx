@@ -1,7 +1,7 @@
 "use client";
 
 import { Gift } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { PageTitle } from "@/components/common/empty-state";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import {
   IMAGE_UPLOAD_REWARD,
   PACK_CREATE_REWARD,
   PACK_OPEN_COST,
+  TAP_COOLDOWN_MS,
   TAP_DAILY_LIMIT,
   TAP_REWARD,
   TAP_TARGET,
@@ -24,6 +25,11 @@ function ShutterGame() {
   const utils = trpc.useUtils();
   const me = trpc.user.me.useQuery();
   const reward = trpc.user.tapReward.useMutation();
+  // サーバーの最短間隔より早く送らないよう、前回受け取った時刻を覚えておく
+  const lastRewardAt = useRef(0);
+  const [developing, setDeveloping] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
   const left = me.data?.tapRewardsLeft;
   const exhausted = left === 0;
   const [count, setCount] = useState(0);
@@ -33,15 +39,10 @@ function ShutterGame() {
   const [pops, setPops] = useState<number[]>([]);
   const popId = useRef(0);
 
-  const tap = () => {
-    // 受け取り中・上限到達時はシャッターだけ切れる（回数は増やさない）
-    setSnap((s) => s + 1);
-    if (reward.isPending || exhausted) return;
-    const next = count + 1;
-    setCount(next);
-    if (next < TAP_TARGET) return;
+  const send = () => {
     reward.mutate(undefined, {
       onSuccess: (res) => {
+        lastRewardAt.current = Date.now();
         setCount(0);
         setFlash((f) => f + 1);
         utils.user.me.setData(undefined, (old) =>
@@ -60,7 +61,24 @@ function ShutterGame() {
         toast.error(errorMessage(error, "ポイントを受け取れませんでした"));
         void utils.user.me.invalidate();
       },
+      onSettled: () => setDeveloping(false),
     });
+  };
+
+  const tap = () => {
+    // 受け取り中・上限到達時はシャッターだけ切れる（回数は増やさない）
+    setSnap((s) => s + 1);
+    if (developing || exhausted) return;
+    const next = count + 1;
+    setCount(next);
+    if (next < TAP_TARGET) return;
+    setDeveloping(true);
+    // 速すぎた場合は「現像中」として少し待ってから受け取る
+    const wait = Math.max(
+      0,
+      lastRewardAt.current + TAP_COOLDOWN_MS + 150 - Date.now(),
+    );
+    timer.current = setTimeout(send, wait);
   };
 
   const progress = count / TAP_TARGET;
@@ -136,7 +154,7 @@ function ShutterGame() {
             <circle cx="-4" cy="-5" r="4" fill="#fff" opacity=".35" />
           </svg>
           <span className="absolute inset-x-0 bottom-7 font-mono text-lg font-medium text-paper tabular-nums">
-            {count}/{TAP_TARGET}
+            {developing ? "現像中…" : `${count}/${TAP_TARGET}`}
           </span>
         </button>
         {pops.map((id) => (
@@ -164,7 +182,16 @@ function ShutterGame() {
 
 function DailyBonus() {
   const utils = trpc.useUtils();
-  const me = trpc.user.me.useQuery();
+  const me = trpc.user.me.useQuery(undefined, { refetchOnWindowFocus: true });
+  const nextAt = me.data?.nextDailyBonusAt;
+  // 画面を開いたまま日付が変わったら、ボーナスと上限を取り直す
+  useEffect(() => {
+    if (!nextAt) return;
+    const ms = new Date(nextAt).getTime() - Date.now() + 1000;
+    if (ms > 24 * 60 * 60 * 1000) return;
+    const t = setTimeout(() => void me.refetch(), Math.max(0, ms));
+    return () => clearTimeout(t);
+  }, [nextAt, me.refetch]);
   const claim = trpc.user.claimDailyBonus.useMutation({
     onSuccess: (res) => {
       utils.user.me.setData(undefined, (old) =>

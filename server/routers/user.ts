@@ -7,6 +7,7 @@ import {
 } from "@/lib/constants/points";
 import { createTRPCRouter, protectedProcedure } from "@/lib/trpc/server";
 import { nextJstDay, startOfJstDay } from "@/server/time";
+import { displayName } from "@/server/users";
 
 function tapRewardsLeft(
   user: { tapRewardDay: Date | null; tapRewardCount: number },
@@ -39,7 +40,7 @@ export const userRouter = createTRPCRouter({
       !user.lastDailyBonusAt || user.lastDailyBonusAt < startOfJstDay(now);
     return {
       id: user.id,
-      name: user.name ?? user.email?.split("@")[0] ?? "ゲスト",
+      name: displayName(user),
       email: user.email,
       points: user.points,
       dailyBonusAvailable,

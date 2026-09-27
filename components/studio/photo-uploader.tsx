@@ -82,7 +82,7 @@ export function PhotoUploader() {
       onSubmit={submit}
       className="grid gap-6 rounded-3xl border-2 border-ink bg-card p-5 shadow-hard md:grid-cols-[240px_1fr] md:p-6"
     >
-      <div className="mx-auto w-full max-w-[240px]">
+      <div className="group mx-auto w-full max-w-[240px]">
         {preview ? (
           <div className="space-y-2">
             <PhotoCard
@@ -119,6 +119,8 @@ export function PhotoUploader() {
             className={cn(
               "flex aspect-[4/5.4] w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-ink/50 bg-paper p-4 text-center transition-colors",
               dragging ? "border-red bg-[#fff1ee]" : "hover:bg-paper-2",
+              // 実体の input は視覚的に隠しているので、フォーカスはラベル側に表示する
+              "group-has-[input:focus-visible]:outline-3 group-has-[input:focus-visible]:outline-offset-2 group-has-[input:focus-visible]:outline-rarity-sr",
             )}
           >
             <span className="grid size-12 place-items-center rounded-full border-2 border-ink bg-card">
