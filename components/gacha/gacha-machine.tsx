@@ -42,12 +42,16 @@ export function GachaMachine({
   const disabled = !pack || !canAfford || busy;
 
   return (
-    <div className="mx-auto w-full max-w-[270px] select-none sm:max-w-[340px]">
+    <div className="mx-auto w-full max-w-[250px] select-none sm:max-w-[340px]">
       {/* ドーム */}
       <div
         className={cn(
           "relative mx-auto aspect-square w-[80%] overflow-hidden sm:w-[86%] rounded-full border-[3px] border-ink bg-[radial-gradient(circle_at_35%_30%,#fffdf8_0%,#eef3f4_45%,#dfe7ea_100%)]",
           phase === "turning" && "globe-shaking",
+          // SSR 以上が出たときの「確定演出」
+          (phase === "capsule" || phase === "opening") &&
+            (best === "SSR" || best === "UR") &&
+            "rainbow-glow",
         )}
       >
         {GLOBE_CAPSULES.map((cap) => (

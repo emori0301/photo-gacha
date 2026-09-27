@@ -46,12 +46,16 @@ export function PageTitle({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+    <div className="mb-4 flex flex-wrap items-end justify-between gap-4 sm:mb-6">
       <div>
         <h1 className="font-display text-3xl leading-tight sm:text-4xl">
           {title}
         </h1>
-        {lead && <p className="mt-1.5 text-ink-2">{lead}</p>}
+        {lead && (
+          <p className="mt-1 text-sm text-ink-2 sm:mt-1.5 sm:text-base">
+            {lead}
+          </p>
+        )}
       </div>
       {action}
     </div>

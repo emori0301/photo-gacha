@@ -354,6 +354,37 @@
   animation: aperture 0.18s ease-out;
 }
 
+@keyframes rainbow-glow {
+  0% {
+    box-shadow:
+      0 0 0 4px #ff6b6b,
+      0 0 28px 6px #ff6b6b;
+  }
+  25% {
+    box-shadow:
+      0 0 0 4px #ffd93d,
+      0 0 28px 6px #ffd93d;
+  }
+  50% {
+    box-shadow:
+      0 0 0 4px #6bcb77,
+      0 0 28px 6px #6bcb77;
+  }
+  75% {
+    box-shadow:
+      0 0 0 4px #4d96ff,
+      0 0 28px 6px #c77dff;
+  }
+  100% {
+    box-shadow:
+      0 0 0 4px #ff6b6b,
+      0 0 28px 6px #ff6b6b;
+  }
+}
+.rainbow-glow {
+  animation: rainbow-glow 1.2s linear infinite;
+}
+
 .flip-scene {
   perspective: 1400px;
 }

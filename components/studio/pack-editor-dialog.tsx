@@ -366,7 +366,7 @@ export function PackEditorDialog({
                         />
                         <span
                           className={cn(
-                            "absolute right-1 bottom-1 grid size-6 place-items-center rounded-full border-2 border-ink",
+                            "absolute right-1 bottom-1 z-10 grid size-6 place-items-center rounded-full border-2 border-ink",
                             on ? "bg-red text-white" : "bg-card/90",
                           )}
                         >

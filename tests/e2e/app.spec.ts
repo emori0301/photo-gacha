@@ -140,7 +140,9 @@ test("登録 → カード作成 → パック作成 → ガチャ → 図鑑", 
   await page.getByRole("button", { name: "カプセルを開ける" }).click();
   // 開いた直後のスペースは「全部めくる」ではなく 1 枚目をめくる
   await expect(
-    page.getByRole("dialog").getByRole("button", { name: "めくる", exact: true }),
+    page
+      .getByRole("dialog")
+      .getByRole("button", { name: "めくる", exact: true }),
   ).toBeFocused();
   await page.keyboard.press("Space");
   await expect(

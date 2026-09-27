@@ -186,7 +186,7 @@ export function GachaView() {
               onTurn={turn}
               onOpenCapsule={openCapsule}
             />
-            <div className="mt-6 flex flex-col items-center gap-2">
+            <div className="mt-4 flex flex-col items-center gap-2 sm:mt-6">
               <Button
                 size="lg"
                 onClick={turn}
