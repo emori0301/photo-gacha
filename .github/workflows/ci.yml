@@ -17,6 +17,9 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      # postinstall の prisma generate が設定ファイルで DATABASE_URL を要求する。接続はしないのでダミーでよい
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,7 +37,13 @@ jobs:
         run: npm ci
 
       - name: Typecheck
-        run: npx tsc --noEmit
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
 
       - name: Gitleaks secret scan
         uses: gitleaks/gitleaks-action@v2
