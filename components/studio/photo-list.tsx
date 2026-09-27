@@ -7,7 +7,6 @@ import { PhotoCard } from "@/components/cards/photo-card";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState, Skeleton } from "@/components/common/empty-state";
 import { Button } from "@/components/ui/button";
-import { IMAGE_UPLOAD_REWARD } from "@/lib/constants/points";
 import { errorMessage, trpc } from "@/lib/trpc/client";
 import { type EditablePhoto, PhotoEditDialog } from "./photo-edit-dialog";
 
@@ -16,9 +15,11 @@ export function PhotoList() {
   const photos = trpc.image.mine.useQuery();
   const remove = trpc.image.delete.useMutation();
   const [editing, setEditing] = useState<EditablePhoto | null>(null);
-  const [deleting, setDeleting] = useState<{ id: string; name: string } | null>(
-    null,
-  );
+  const [deleting, setDeleting] = useState<{
+    id: string;
+    name: string;
+    bonus: number;
+  } | null>(null);
 
   const confirmDelete = async () => {
     if (!deleting) return;
@@ -90,7 +91,11 @@ export function PhotoList() {
                           }
                           disabled={locked}
                           onClick={() =>
-                            setDeleting({ id: photo.id, name: photo.name })
+                            setDeleting({
+                              id: photo.id,
+                              name: photo.name,
+                              bonus: photo.bonusGranted,
+                            })
                           }
                         >
                           <Trash2 />
@@ -117,8 +122,10 @@ export function PhotoList() {
         pending={remove.isPending}
         onConfirm={confirmDelete}
       >
-        登録ボーナスの {IMAGE_UPLOAD_REWARD}pt
-        は返却されます。この操作は取り消せません。
+        {deleting?.bonus
+          ? `登録ボーナスの ${deleting.bonus}pt を返却します。`
+          : ""}
+        この操作は取り消せません。
       </ConfirmDialog>
     </section>
   );

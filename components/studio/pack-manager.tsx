@@ -23,9 +23,11 @@ export function PackManager({ onGoToPhotos }: { onGoToPhotos: () => void }) {
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<EditablePack | null>(null);
-  const [deleting, setDeleting] = useState<{ id: string; name: string } | null>(
-    null,
-  );
+  const [deleting, setDeleting] = useState<{
+    id: string;
+    name: string;
+    bonus: number;
+  } | null>(null);
 
   const photoList = photos.data ?? [];
 
@@ -169,7 +171,11 @@ export function PackManager({ onGoToPhotos }: { onGoToPhotos: () => void }) {
                     size="icon-sm"
                     aria-label={`${pack.name} を削除`}
                     onClick={() =>
-                      setDeleting({ id: pack.id, name: pack.name })
+                      setDeleting({
+                        id: pack.id,
+                        name: pack.name,
+                        bonus: pack.bonusGranted,
+                      })
                     }
                   >
                     <Trash2 />
@@ -195,8 +201,10 @@ export function PackManager({ onGoToPhotos }: { onGoToPhotos: () => void }) {
         pending={remove.isPending}
         onConfirm={confirmDelete}
       >
-        作成ボーナスの {PACK_CREATE_REWARD}pt
-        は返却されます。すでに引かれたカードは、引いた人の図鑑に残ります。
+        {deleting?.bonus
+          ? `作成ボーナスの ${deleting.bonus}pt を返却します。`
+          : ""}
+        すでに引かれたカードは、引いた人の図鑑に残ります。
       </ConfirmDialog>
     </div>
   );

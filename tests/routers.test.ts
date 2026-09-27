@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   CARDS_PER_PULL,
   DAILY_BONUS,
+  IMAGE_REWARD_DAILY_LIMIT,
   IMAGE_UPLOAD_REWARD,
   PACK_CREATE_REWARD,
   PACK_OPEN_COST,
+  PACK_REWARD_DAILY_LIMIT,
   TAP_DAILY_LIMIT,
   TAP_REWARD,
 } from "@/lib/constants/points";
@@ -81,12 +83,39 @@ describe("image", () => {
     expect(await points(user.id)).toBe(0);
   });
 
-  it("返却でポイントがマイナスにならない", async () => {
+  it("ボーナスを返却できないときは削除できない", async () => {
     const { user, api } = await makeUser("alice", 0);
     const [photo] = await addPhotos(api, ["N"]);
     await prisma.user.update({ where: { id: user.id }, data: { points: 0 } });
-    await api.image.delete({ id: photo.id });
+    await expect(api.image.delete({ id: photo.id })).rejects.toMatchObject({
+      code: "PRECONDITION_FAILED",
+    });
+    expect(await prisma.image.count({ where: { id: photo.id } })).toBe(1);
     expect(await points(user.id)).toBe(0);
+  });
+
+  it("同じ画像から 2 枚目のカードは作れない", async () => {
+    const { api } = await makeUser("alice");
+    const [photo] = await addPhotos(api, ["N"]);
+    await expect(
+      api.image.create({ name: "dup", imageUrl: photo.imageUrl, rarity: "R" }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
+  it("登録ボーナスは 1 日の上限まで", async () => {
+    const { user, api } = await makeUser("alice", 0);
+    const photos = await addPhotos(
+      api,
+      Array.from({ length: IMAGE_REWARD_DAILY_LIMIT + 2 }, () => "N" as const),
+    );
+    expect(await points(user.id)).toBe(
+      IMAGE_UPLOAD_REWARD * IMAGE_REWARD_DAILY_LIMIT,
+    );
+    const last = photos[photos.length - 1];
+    expect(last.bonusGranted).toBe(0);
+    // ボーナス無しのカードは、ポイント 0 でも削除できる
+    await prisma.user.update({ where: { id: user.id }, data: { points: 0 } });
+    await api.image.delete({ id: last.id });
   });
 
   it("不正な画像パスは拒否する", async () => {
@@ -130,13 +159,14 @@ describe("image", () => {
     });
   });
 
-  it("削除時、他で使われている画像のアップロード記録は残す", async () => {
+  it("削除時、パックのカバーで使われている画像は消さない", async () => {
     const { user, api } = await makeUser("alice");
-    const [photo] = await addPhotos(api, ["N"]);
-    const other = await api.image.create({
-      name: "same",
-      imageUrl: photo.imageUrl,
-      rarity: "R",
+    const [photo, other] = await addPhotos(api, ["N", "N"]);
+    const pack = await api.pack.create({
+      name: "p",
+      imageIds: [other.id],
+      rarityRates: DEFAULT_RARITY_RATES,
+      thumbnailUrl: photo.imageUrl,
     });
     await api.image.delete({ id: photo.id });
     expect(
@@ -144,7 +174,7 @@ describe("image", () => {
         where: { url: photo.imageUrl, userId: user.id },
       }),
     ).toBe(1);
-    await api.image.delete({ id: other.id });
+    await api.pack.delete({ id: pack.id });
     expect(await prisma.upload.count({ where: { url: photo.imageUrl } })).toBe(
       0,
     );
@@ -191,6 +221,48 @@ describe("pack", () => {
     expect(await points(user.id)).toBe(before + PACK_CREATE_REWARD);
     await api.pack.delete({ id: pack.id });
     expect(await points(user.id)).toBe(before);
+  });
+
+  it("作成→引く→削除の繰り返しでポイントを稼げない", async () => {
+    const { user, api } = await makeUser("alice", 0);
+    const [photo] = await addPhotos(api, ["N"]);
+    await prisma.user.update({ where: { id: user.id }, data: { points: 0 } });
+    const pack = await api.pack.create({
+      name: "loop",
+      imageIds: [photo.id],
+      rarityRates: DEFAULT_RARITY_RATES,
+    });
+    expect(pack.bonusGranted).toBe(PACK_CREATE_REWARD);
+    await api.pack.open({ packId: pack.id });
+    expect(await points(user.id)).toBe(0);
+    await expect(api.pack.delete({ id: pack.id })).rejects.toMatchObject({
+      code: "PRECONDITION_FAILED",
+    });
+    expect(await prisma.pack.count({ where: { id: pack.id } })).toBe(1);
+  });
+
+  it("パック作成ボーナスは 1 日の上限まで", async () => {
+    const { user, api } = await makeUser("alice", 0);
+    const [photo] = await addPhotos(api, ["N"]);
+    const before = await points(user.id);
+    const packs = [];
+    for (let i = 0; i < PACK_REWARD_DAILY_LIMIT + 1; i++) {
+      packs.push(
+        await api.pack.create({
+          name: `p${i}`,
+          imageIds: [photo.id],
+          rarityRates: DEFAULT_RARITY_RATES,
+        }),
+      );
+    }
+    expect(await points(user.id)).toBe(
+      before + PACK_CREATE_REWARD * PACK_REWARD_DAILY_LIMIT,
+    );
+    expect(packs[packs.length - 1].bonusGranted).toBe(0);
+    // ボーナス無しのパックの削除ではポイントは減らない
+    const mid = await points(user.id);
+    await api.pack.delete({ id: packs[packs.length - 1].id });
+    expect(await points(user.id)).toBe(mid);
   });
 
   it("排出率の合計が 100 でないと作れない", async () => {

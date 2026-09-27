@@ -186,6 +186,13 @@ describe("rebalanceRates", () => {
     expect(next).toEqual({ N: 20, R: 20, SR: 20, SSR: 20, UR: 20 });
   });
 
+  it("残りがごく少ないときも負の値にならない", () => {
+    const next = rebalanceRates({ N: 0, R: 0, SR: 0, SSR: 0, UR: 99.8 }, "UR");
+    expect(sumRates(next)).toBe(100);
+    expect(isValidRarityRates(next)).toBe(true);
+    for (const r of RARITY_LIST) expect(next[r]).toBeGreaterThanOrEqual(0);
+  });
+
   it("どんな入力でも合計 100・負の値なしになる", () => {
     const rng = seeded(7);
     for (let i = 0; i < 2000; i++) {
@@ -193,6 +200,10 @@ describe("rebalanceRates", () => {
         RARITY_LIST.map((r) => [r, Math.round(rng() * 1000) / 10]),
       ) as Record<Rarity, number>;
       const keep = RARITY_LIST[Math.floor(rng() * 5)];
+      // 残りが 1% 未満になるケースも多めに混ぜる
+      if (i % 3 === 0) rates[keep] = 99 + Math.round(rng() * 10) / 10;
+      if (i % 5 === 0)
+        for (const r of RARITY_LIST) if (r !== keep) rates[r] = 0;
       const next = rebalanceRates(rates, keep);
       expect(sumRates(next)).toBe(100);
       for (const r of RARITY_LIST) expect(next[r]).toBeGreaterThanOrEqual(0);

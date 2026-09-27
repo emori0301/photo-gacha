@@ -48,7 +48,7 @@ export function DialogContent({
           )}
         >
           <div className="min-w-0">
-            <DialogPrimitive.Title className="font-display text-xl leading-snug">
+            <DialogPrimitive.Title className="pr-10 font-display text-xl leading-snug [overflow-wrap:anywhere]">
               {title}
             </DialogPrimitive.Title>
             {description ? (

@@ -8,6 +8,9 @@ export const CARDS_PER_PULL = 5;
 export const IMAGE_UPLOAD_REWARD = 1;
 /** パックを作ったときのボーナス（削除すると返却） */
 export const PACK_CREATE_REWARD = 5;
+/** ボーナスを受け取れる 1 日あたりの回数（作成と削除を繰り返して稼げないように） */
+export const IMAGE_REWARD_DAILY_LIMIT = 10;
+export const PACK_REWARD_DAILY_LIMIT = 3;
 /** シャッター連打: 何回で報酬になるか */
 export const TAP_TARGET = 10;
 /** シャッター連打: 1 セットの報酬 */

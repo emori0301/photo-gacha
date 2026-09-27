@@ -4,6 +4,7 @@ import {
   CARDS_PER_PULL,
   PACK_CREATE_REWARD,
   PACK_OPEN_COST,
+  PACK_REWARD_DAILY_LIMIT,
 } from "@/lib/constants/points";
 import { RARITY_LIST, type Rarity } from "@/lib/constants/rarity";
 import {
@@ -16,7 +17,12 @@ import {
 import type { PrismaClient } from "@/lib/generated/prisma/client";
 import { createTRPCRouter, protectedProcedure } from "@/lib/trpc/server";
 import { uploadUrlSchema } from "@/lib/validation";
-import { prismaErrorCode, refundBonusQueries } from "@/server/points";
+import {
+  giveBack,
+  grantDailyReward,
+  prismaErrorCode,
+  takeBackReward,
+} from "@/server/points";
 import { cleanupUpload, ownsUpload } from "@/server/uploads";
 import { creatorNames } from "@/server/users";
 
@@ -74,7 +80,7 @@ async function assertOwnPack(
 ) {
   const pack = await prisma.pack.findFirst({
     where: { id: packId, userId },
-    select: { id: true, thumbnailUrl: true },
+    select: { id: true, thumbnailUrl: true, bonusGranted: true },
   });
   if (!pack) {
     throw new TRPCError({
@@ -181,6 +187,7 @@ export const packRouter = createTRPCRouter({
         description: true,
         thumbnailUrl: true,
         rarityRates: true,
+        bonusGranted: true,
         packImages: { select: { imageId: true } },
       },
     });
@@ -200,24 +207,31 @@ export const packRouter = createTRPCRouter({
         input.imageIds,
       );
       await assertOwnCover(ctx.prisma, ctx.userId, input.thumbnailUrl);
-      const [pack] = await ctx.prisma.$transaction([
-        ctx.prisma.pack.create({
-          data: {
-            name: input.name,
-            description: input.description || null,
-            thumbnailUrl: input.thumbnailUrl ?? null,
-            rarityRates: JSON.stringify(input.rarityRates),
-            userId: ctx.userId,
-            packImages: { create: imageIds.map((imageId) => ({ imageId })) },
-          },
-          select: { id: true },
-        }),
-        ctx.prisma.user.update({
-          where: { id: ctx.userId },
-          data: { points: { increment: PACK_CREATE_REWARD } },
-        }),
-      ]);
-      return pack;
+      const pack = await ctx.prisma.pack.create({
+        data: {
+          name: input.name,
+          description: input.description || null,
+          thumbnailUrl: input.thumbnailUrl ?? null,
+          rarityRates: JSON.stringify(input.rarityRates),
+          userId: ctx.userId,
+          packImages: { create: imageIds.map((imageId) => ({ imageId })) },
+        },
+        select: { id: true },
+      });
+      const bonus = await grantDailyReward(
+        ctx.prisma,
+        ctx.userId,
+        "pack",
+        PACK_CREATE_REWARD,
+        PACK_REWARD_DAILY_LIMIT,
+      );
+      if (bonus > 0) {
+        await ctx.prisma.pack.update({
+          where: { id: pack.id },
+          data: { bonusGranted: bonus },
+        });
+      }
+      return { id: pack.id, bonusGranted: bonus };
     }),
 
   update: protectedProcedure
@@ -264,12 +278,18 @@ export const packRouter = createTRPCRouter({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const existing = await assertOwnPack(ctx.prisma, ctx.userId, input.id);
+      if (
+        !(await takeBackReward(ctx.prisma, ctx.userId, existing.bonusGranted))
+      ) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: `作成ボーナスの ${existing.bonusGranted}pt を返却できないため削除できません。ポイントを貯めてからもう一度どうぞ`,
+        });
+      }
       try {
-        await ctx.prisma.$transaction([
-          ctx.prisma.pack.delete({ where: { id: input.id } }),
-          ...refundBonusQueries(ctx.prisma, ctx.userId, PACK_CREATE_REWARD),
-        ]);
+        await ctx.prisma.pack.delete({ where: { id: input.id } });
       } catch (error) {
+        await giveBack(ctx.prisma, ctx.userId, existing.bonusGranted);
         throw notFoundIfMissing(error);
       }
       await cleanupUpload(ctx.prisma, existing.thumbnailUrl);

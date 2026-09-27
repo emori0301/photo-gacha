@@ -149,6 +149,17 @@ export function rebalanceRates(rates: RarityRates, keep: Rarity): RarityRates {
   const diff = roundRate(remaining - shares.reduce((a, b) => a + b, 0));
   const largest = shares.indexOf(Math.max(...shares));
   shares[largest] = roundRate(shares[largest] + diff);
+  // 吸収した結果マイナスになった分は、他の枠から順に差し引く
+  for (let i = 0; i < shares.length; i++) {
+    if (shares[i] >= 0) continue;
+    let debt = -shares[i];
+    shares[i] = 0;
+    for (let j = 0; j < shares.length && debt > 0; j++) {
+      const take = Math.min(shares[j], debt);
+      shares[j] = roundRate(shares[j] - take);
+      debt = roundRate(debt - take);
+    }
+  }
 
   const next = { ...rates, [keep]: fixed } as RarityRates;
   others.forEach((r, i) => {

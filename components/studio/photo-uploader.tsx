@@ -11,7 +11,10 @@ import {
   checkImageFile,
   uploadImage,
 } from "@/lib/client/upload";
-import { IMAGE_UPLOAD_REWARD } from "@/lib/constants/points";
+import {
+  IMAGE_REWARD_DAILY_LIMIT,
+  IMAGE_UPLOAD_REWARD,
+} from "@/lib/constants/points";
 import type { Rarity } from "@/lib/constants/rarity";
 import { errorMessage, trpc } from "@/lib/trpc/client";
 import { cn, titleFromFilename } from "@/lib/utils";
@@ -65,8 +68,17 @@ export function PhotoUploader() {
     setPending(true);
     try {
       const imageUrl = await uploadImage(file);
-      await create.mutateAsync({ name, description, imageUrl, rarity });
-      toast.success(`カードにしました（+${IMAGE_UPLOAD_REWARD}pt）`);
+      const created = await create.mutateAsync({
+        name,
+        description,
+        imageUrl,
+        rarity,
+      });
+      toast.success(
+        created.bonusGranted > 0
+          ? `カードにしました（+${created.bonusGranted}pt）`
+          : "カードにしました（今日の登録ボーナスは上限に達しています）",
+      );
       reset();
       void utils.image.mine.invalidate();
       void utils.user.me.invalidate();
@@ -148,8 +160,9 @@ export function PhotoUploader() {
         <div>
           <h2 className="font-display text-xl">写真をカードにする</h2>
           <p className="text-sm text-ink-2">
-            登録するたびに +{IMAGE_UPLOAD_REWARD}
-            pt。作ったカードはパックに入れて、みんなに引いてもらえます。
+            登録するたびに +{IMAGE_UPLOAD_REWARD}pt（1 日{" "}
+            {IMAGE_REWARD_DAILY_LIMIT}{" "}
+            回まで）。作ったカードはパックに入れて、みんなに引いてもらえます。
           </p>
         </div>
         <Field

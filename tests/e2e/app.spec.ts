@@ -232,6 +232,32 @@ test("ログイン・ログアウト・エラー表示", async ({ page }) => {
   );
 });
 
+test("空白の無い長いタイトルでもダイアログからはみ出さない", async ({
+  page,
+}) => {
+  await register(page, "longname");
+  await page.getByRole("link", { name: "工房" }).first().click();
+  const title = "PXL_20250921_093012345_MP_PORTRAIT_ORIGI";
+  await uploadCard(page, title, "N", "#8c867e");
+  await page.getByRole("button", { name: "編集" }).first().click();
+  const heading = page.getByRole("dialog").getByRole("heading");
+  await expect(heading).toBeVisible();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "やめる" })
+    .click();
+  await page.getByRole("button", { name: `${title} を削除` }).click();
+  const confirm = page.getByRole("dialog");
+  const fits = await confirm.evaluate((el) => {
+    const t = el.querySelector("h2") as HTMLElement;
+    return (
+      t.scrollWidth <= t.clientWidth + 1 &&
+      t.getBoundingClientRect().right <= el.getBoundingClientRect().right
+    );
+  });
+  expect(fits).toBe(true);
+});
+
 test("ログイン画面の見た目", async ({ page }, info) => {
   await page.goto("/");
   await expect(

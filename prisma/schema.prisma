@@ -18,14 +18,15 @@ enum Rarity {
 
 /// ユーザーがアップロードした写真。パックに入れるとカードとして排出される。
 model Image {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  imageUrl    String // /uploads/... の公開パス
-  rarity      Rarity
-  userId      String? // 登録したユーザー（旧データは null）
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(cuid())
+  name         String
+  description  String?
+  imageUrl     String // /uploads/... の公開パス
+  rarity       Rarity
+  userId       String? // 登録したユーザー（旧データは null）
+  bonusGranted Int      @default(0) // 登録時に付与したボーナス（削除時に返却する）
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   collections UserCollection[]
   packImages  PackImage[]
@@ -51,6 +52,7 @@ model Pack {
   price        Int? // 未使用（互換のため残置）
   rarityRates  String? // JSON: {"N":40,"R":30,"SR":20,"SSR":8,"UR":2}
   userId       String? // 作成者（旧データは null）
+  bonusGranted Int      @default(0) // 作成時に付与したボーナス（削除時に返却する）
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -125,6 +127,10 @@ model User {
   lastTapRewardAt  DateTime?
   tapRewardDay     DateTime? // シャッター報酬を数えている日（JST 0:00）
   tapRewardCount   Int       @default(0)
+  imageRewardDay   DateTime?
+  imageRewardCount Int       @default(0)
+  packRewardDay    DateTime?
+  packRewardCount  Int       @default(0)
   lastDailyBonusAt DateTime?
   accounts         Account[]
   sessions         Session[]

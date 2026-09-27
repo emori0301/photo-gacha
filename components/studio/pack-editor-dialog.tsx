@@ -19,7 +19,10 @@ import {
   checkImageFile,
   uploadImage,
 } from "@/lib/client/upload";
-import { PACK_CREATE_REWARD } from "@/lib/constants/points";
+import {
+  PACK_CREATE_REWARD,
+  PACK_REWARD_DAILY_LIMIT,
+} from "@/lib/constants/points";
 import {
   DEFAULT_RARITY_RATES,
   RARITY_LIST,
@@ -158,8 +161,12 @@ export function PackEditorDialog({
         await update.mutateAsync({ id: pack.id, ...input });
         toast.success("パックを保存しました");
       } else {
-        await create.mutateAsync(input);
-        toast.success(`パックを作りました（+${PACK_CREATE_REWARD}pt）`);
+        const created = await create.mutateAsync(input);
+        toast.success(
+          created.bonusGranted > 0
+            ? `パックを作りました（+${created.bonusGranted}pt）`
+            : "パックを作りました（今日の作成ボーナスは上限に達しています）",
+        );
         void utils.user.me.invalidate();
       }
       void utils.pack.invalidate();
@@ -178,7 +185,7 @@ export function PackEditorDialog({
         description={
           pack
             ? undefined
-            : `作ると +${PACK_CREATE_REWARD}pt。削除すると返却されます。`
+            : `作ると +${PACK_CREATE_REWARD}pt（1 日 ${PACK_REWARD_DAILY_LIMIT} 回まで）。削除すると返却します。`
         }
         className="max-w-4xl"
         onInteractOutside={(e) => e.preventDefault()}
