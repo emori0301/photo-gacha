@@ -39,6 +39,7 @@ model Upload {
   id        String   @id @default(cuid())
   url       String   @unique
   userId    String
+  used      Boolean  @default(false) // カードにしたかどうか（1 つの画像から 1 枚だけ）
   createdAt DateTime @default(now())
 
   @@index([userId])

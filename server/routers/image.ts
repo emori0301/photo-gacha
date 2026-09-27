@@ -13,7 +13,7 @@ import {
   prismaErrorCode,
   takeBackReward,
 } from "@/server/points";
-import { cleanupUpload, ownsUpload } from "@/server/uploads";
+import { cleanupUpload } from "@/server/uploads";
 
 const nameSchema = z
   .string()
@@ -54,28 +54,44 @@ export const imageRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      if (!(await ownsUpload(ctx.prisma, ctx.userId, input.imageUrl))) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "自分でアップロードした画像だけをカードにできます",
-        });
-      }
-      // 同じ画像から何枚もカードを作ってボーナスを稼げないようにする
-      if (
-        await ctx.prisma.image.count({ where: { imageUrl: input.imageUrl } })
-      ) {
-        throw new TRPCError({
-          code: "CONFLICT",
-          message: "この画像はすでにカードになっています",
-        });
-      }
-      const image = await ctx.prisma.image.create({
-        data: {
-          ...input,
-          description: input.description || null,
-          userId: ctx.userId,
-        },
+      // 自分のアップロードを「使用済み」にできたときだけカードを作る。
+      // 条件付きの 1 文なので、同時に送られても 1 枚しか作れない。
+      const { count } = await ctx.prisma.upload.updateMany({
+        where: { url: input.imageUrl, userId: ctx.userId, used: false },
+        data: { used: true },
       });
+      if (count === 0) {
+        const mine = await ctx.prisma.upload.count({
+          where: { url: input.imageUrl, userId: ctx.userId },
+        });
+        throw new TRPCError(
+          mine
+            ? {
+                code: "CONFLICT",
+                message: "この画像はすでにカードになっています",
+              }
+            : {
+                code: "FORBIDDEN",
+                message: "自分でアップロードした画像だけをカードにできます",
+              },
+        );
+      }
+      let image: Awaited<ReturnType<typeof ctx.prisma.image.create>>;
+      try {
+        image = await ctx.prisma.image.create({
+          data: {
+            ...input,
+            description: input.description || null,
+            userId: ctx.userId,
+          },
+        });
+      } catch (error) {
+        await ctx.prisma.upload.updateMany({
+          where: { url: input.imageUrl },
+          data: { used: false },
+        });
+        throw error;
+      }
       const bonus = await grantDailyReward(
         ctx.prisma,
         ctx.userId,

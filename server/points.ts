@@ -24,16 +24,19 @@ export async function grantDailyReward(
   const today = startOfJstDay(new Date());
   const day = kind === "image" ? "imageRewardDay" : "packRewardDay";
   const count = kind === "image" ? "imageRewardCount" : "packRewardCount";
-  const sameDay = await prisma.user.updateMany({
-    where: { id: userId, [day]: today, [count]: { lt: limit } },
-    data: { points: { increment: amount }, [count]: { increment: 1 } },
-  });
-  if (sameDay.count > 0) return amount;
+  const sameDay = () =>
+    prisma.user.updateMany({
+      where: { id: userId, [day]: today, [count]: { lt: limit } },
+      data: { points: { increment: amount }, [count]: { increment: 1 } },
+    });
+  if ((await sameDay()).count > 0) return amount;
   const newDay = await prisma.user.updateMany({
     where: { id: userId, OR: [{ [day]: null }, { [day]: { lt: today } }] },
     data: { points: { increment: amount }, [day]: today, [count]: 1 },
   });
-  return newDay.count > 0 ? amount : 0;
+  if (newDay.count > 0) return amount;
+  // 同時に来た別のリクエストが先に日付を更新した場合は、同じ日として数え直す
+  return (await sameDay()).count > 0 ? amount : 0;
 }
 
 /**

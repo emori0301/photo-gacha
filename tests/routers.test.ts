@@ -102,6 +102,49 @@ describe("image", () => {
     ).rejects.toMatchObject({ code: "CONFLICT" });
   });
 
+  it("同じ画像で同時にカードを作っても 1 枚だけ", async () => {
+    const { user, api } = await makeUser("alice", 0);
+    const url = await fakeUpload(user.id);
+    const results = await Promise.allSettled(
+      Array.from({ length: 6 }, (_, i) =>
+        api.image.create({ name: `dup${i}`, imageUrl: url, rarity: "N" }),
+      ),
+    );
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(await prisma.image.count({ where: { imageUrl: url } })).toBe(1);
+    expect(await points(user.id)).toBe(IMAGE_UPLOAD_REWARD);
+  });
+
+  it("その日最初の登録を同時にしてもボーナスを取りこぼさない", async () => {
+    const { user, api } = await makeUser("alice", 0);
+    const urls = await Promise.all(
+      Array.from({ length: 5 }, () => fakeUpload(user.id)),
+    );
+    const created = await Promise.all(
+      urls.map((imageUrl, i) =>
+        api.image.create({ name: `c${i}`, imageUrl, rarity: "N" }),
+      ),
+    );
+    expect(created.every((c) => c.bonusGranted === IMAGE_UPLOAD_REWARD)).toBe(
+      true,
+    );
+    expect(await points(user.id)).toBe(IMAGE_UPLOAD_REWARD * 5);
+  });
+
+  it("カードを消した画像は、もう一度カードにできる", async () => {
+    const { api } = await makeUser("alice");
+    const [photo] = await addPhotos(api, ["N"]);
+    await api.image.delete({ id: photo.id });
+    // 画像ファイルも消えるので、アップロード記録ごと無くなる
+    await expect(
+      api.image.create({
+        name: "again",
+        imageUrl: photo.imageUrl,
+        rarity: "N",
+      }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
   it("登録ボーナスは 1 日の上限まで", async () => {
     const { user, api } = await makeUser("alice", 0);
     const photos = await addPhotos(

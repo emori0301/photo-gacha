@@ -121,6 +121,10 @@ export async function cleanupUpload(
     prisma.image.count({ where: { imageUrl: url } }),
     prisma.pack.count({ where: { thumbnailUrl: url } }),
   ]);
+  if (images === 0) {
+    // カードが消えたら、その画像からもう一度カードを作れる
+    await prisma.upload.updateMany({ where: { url }, data: { used: false } });
+  }
   if (images + packs > 0) return;
   await prisma.upload.deleteMany({ where: { url } });
   await removeUpload(url);
