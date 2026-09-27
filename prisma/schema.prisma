@@ -1,17 +1,11 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client"
-  output   = "../lib/prisma"
+  output   = "../lib/generated/prisma"
 }
 
 datasource db {
   provider = "sqlite"
-  // The `url` property is deprecated in Prisma schema files as of Prisma 5.14/7.
-  // Move your connection URL to prisma.config.ts or set it in your PrismaClient constructor.
-  // See: https://pris.ly/d/config-datasource and https://pris.ly/d/prisma7-client-config
-  // url      = env("DATABASE_URL")
+  url      = env("DATABASE_URL")
 }
 
 enum Rarity {
@@ -22,63 +16,74 @@ enum Rarity {
   UR
 }
 
+/// ユーザーがアップロードした写真。パックに入れるとカードとして排出される。
 model Image {
   id          String   @id @default(cuid())
   name        String
   description String?
-  imageUrl    String   // 画像のパス（public/uploads/...）
+  imageUrl    String // /uploads/... の公開パス
   rarity      Rarity
-  userId      String?  // 登録したユーザーID
+  userId      String? // 登録したユーザー（旧データは null）
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
-  // コレクションとのリレーション
+
   collections UserCollection[]
-  // パックとのリレーション
   packImages  PackImage[]
-  
+
+  @@index([userId])
+}
+
+/// /api/upload で保存したファイルと、その持ち主
+model Upload {
+  id        String   @id @default(cuid())
+  url       String   @unique
+  userId    String
+  createdAt DateTime @default(now())
+
   @@index([userId])
 }
 
 model Pack {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  thumbnailUrl String? // サムネイル画像のURL
-  price       Int?     // 仮想通貨やポイント（オプション）
-  rarityRates String? // レア度ごとの排出率（JSON形式: {"N": 40, "R": 30, "SR": 20, "SSR": 8, "UR": 2}）
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  // パックに含まれる画像（5枚）
-  packImages  PackImage[]
+  id           String   @id @default(cuid())
+  name         String
+  description  String?
+  thumbnailUrl String?
+  price        Int? // 未使用（互換のため残置）
+  rarityRates  String? // JSON: {"N":40,"R":30,"SR":20,"SSR":8,"UR":2}
+  userId       String? // 作成者（旧データは null）
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  packImages PackImage[]
+
+  @@index([userId])
 }
 
 model PackImage {
-  id        String   @id @default(cuid())
-  packId    String
-  pack      Pack     @relation(fields: [packId], references: [id], onDelete: Cascade)
-  imageId   String
-  image     Image    @relation(fields: [imageId], references: [id])
-  weight    Int      @default(1) // レア度の重み（抽選用）
-  
+  id      String @id @default(cuid())
+  packId  String
+  pack    Pack   @relation(fields: [packId], references: [id], onDelete: Cascade)
+  imageId String
+  image   Image  @relation(fields: [imageId], references: [id])
+  weight  Int    @default(1) // 未使用（互換のため残置）
+
   @@unique([packId, imageId])
   @@index([packId])
 }
 
 model UserCollection {
-  id        String   @id @default(cuid())
-  userId    String   // セッションIDやユーザーID
-  imageId   String
-  image     Image    @relation(fields: [imageId], references: [id])
-  count     Int      @default(1) // 獲得した枚数
+  id         String   @id @default(cuid())
+  userId     String
+  imageId    String
+  image      Image    @relation(fields: [imageId], references: [id])
+  count      Int      @default(1)
   obtainedAt DateTime @default(now())
-  
+
   @@unique([userId, imageId])
   @@index([userId])
 }
 
-// NextAuth用のモデル
+// NextAuth 用のモデル（Credentials + JWT のため Account/Session は現状未使用）
 model Account {
   id                String  @id @default(cuid())
   userId            String
@@ -110,14 +115,19 @@ model Session {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
-  emailVerified DateTime?
-  image         String?
-  points        Int       @default(10) // ポイント（デフォルト10）
-  accounts      Account[]
-  sessions      Session[]
+  id               String    @id @default(cuid())
+  name             String?
+  email            String?   @unique
+  emailVerified    DateTime?
+  image            String?
+  passwordHash     String?
+  points           Int       @default(10)
+  lastTapRewardAt  DateTime?
+  tapRewardDay     DateTime? // シャッター報酬を数えている日（JST 0:00）
+  tapRewardCount   Int       @default(0)
+  lastDailyBonusAt DateTime?
+  accounts         Account[]
+  sessions         Session[]
 }
 
 model VerificationToken {

@@ -1,121 +1,305 @@
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { createTRPCRouter, publicProcedure } from "@/lib/trpc/server";
+import {
+  CARDS_PER_PULL,
+  PACK_CREATE_REWARD,
+  PACK_OPEN_COST,
+} from "@/lib/constants/points";
+import { RARITY_LIST, type Rarity } from "@/lib/constants/rarity";
+import {
+  drawCards,
+  effectiveRates,
+  highestRarity,
+  isValidRarityRates,
+  parseRarityRates,
+} from "@/lib/gacha";
+import type { PrismaClient } from "@/lib/generated/prisma/client";
+import { createTRPCRouter, protectedProcedure } from "@/lib/trpc/server";
+import { uploadUrlSchema } from "@/lib/validation";
+import { prismaErrorCode, refundBonusQueries } from "@/server/points";
+import { cleanupUpload, ownsUpload } from "@/server/uploads";
+
+const ratesSchema = z
+  .object({
+    N: z.number().min(0).max(100),
+    R: z.number().min(0).max(100),
+    SR: z.number().min(0).max(100),
+    SSR: z.number().min(0).max(100),
+    UR: z.number().min(0).max(100),
+  })
+  .refine(isValidRarityRates, "排出率の合計を 100% にしてください");
+
+const packInput = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, "パック名を入力してください")
+    .max(30, "パック名は 30 文字以内にしてください"),
+  description: z
+    .string()
+    .trim()
+    .max(120, "説明は 120 文字以内にしてください")
+    .optional(),
+  thumbnailUrl: uploadUrlSchema.nullish(),
+  imageIds: z
+    .array(z.string())
+    .min(1, "カードを 1 枚以上選んでください")
+    .max(200, "1 パックに入れられるのは 200 枚までです"),
+  rarityRates: ratesSchema,
+});
+
+async function assertOwnImages(
+  prisma: Pick<PrismaClient, "image">,
+  userId: string,
+  imageIds: string[],
+) {
+  const unique = [...new Set(imageIds)];
+  const owned = await prisma.image.count({
+    where: { id: { in: unique }, userId },
+  });
+  if (owned !== unique.length) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "自分の写真だけをパックに入れられます",
+    });
+  }
+  return unique;
+}
+
+async function assertOwnPack(
+  prisma: Pick<PrismaClient, "pack">,
+  userId: string,
+  packId: string,
+) {
+  const pack = await prisma.pack.findFirst({
+    where: { id: packId, userId },
+    select: { id: true, thumbnailUrl: true },
+  });
+  if (!pack) {
+    throw new TRPCError({
+      code: "NOT_FOUND",
+      message: "パックが見つかりません",
+    });
+  }
+  return pack;
+}
+
+async function assertOwnCover(
+  prisma: Parameters<typeof ownsUpload>[0],
+  userId: string,
+  url: string | null | undefined,
+  current?: string | null,
+) {
+  // 変更しない場合（旧データのカバーなど）はそのまま許可する
+  if (!url || url === current) return;
+  if (!(await ownsUpload(prisma, userId, url))) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "カバーには自分の画像を使ってください",
+    });
+  }
+}
+
+/** 確認後に削除されていた場合（P2025）は NOT_FOUND にする */
+function notFoundIfMissing(error: unknown) {
+  if (prismaErrorCode(error) === "P2025") {
+    return new TRPCError({
+      code: "NOT_FOUND",
+      message: "パックが見つかりません",
+    });
+  }
+  return error;
+}
+
+async function creatorNames(
+  prisma: Pick<PrismaClient, "user">,
+  ids: (string | null)[],
+) {
+  const unique = [...new Set(ids.filter((id): id is string => !!id))];
+  if (unique.length === 0) return new Map<string, string>();
+  const users = await prisma.user.findMany({
+    where: { id: { in: unique } },
+    select: { id: true, name: true, email: true },
+  });
+  return new Map(
+    users.map((u) => [u.id, u.name || u.email?.split("@")[0] || "名無し"]),
+  );
+}
 
 export const packRouter = createTRPCRouter({
-  getAll: publicProcedure.query(async ({ ctx }) => {
-    return ctx.prisma.pack.findMany({
-      include: {
+  /** ガチャ画面に並べるパック（カードが 1 枚以上あるもの） */
+  list: protectedProcedure.query(async ({ ctx }) => {
+    const packs = await ctx.prisma.pack.findMany({
+      where: { packImages: { some: {} } },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        thumbnailUrl: true,
+        rarityRates: true,
+        userId: true,
         packImages: {
-          include: {
-            image: true,
-          },
+          select: { image: { select: { id: true, rarity: true } } },
         },
       },
-      orderBy: { createdAt: "desc" },
+    });
+    const allImageIds = [
+      ...new Set(packs.flatMap((p) => p.packImages.map((pi) => pi.image.id))),
+    ];
+    const [owned, names] = await Promise.all([
+      ctx.prisma.userCollection.findMany({
+        where: { userId: ctx.userId, imageId: { in: allImageIds } },
+        select: { imageId: true },
+      }),
+      creatorNames(
+        ctx.prisma,
+        packs.map((p) => p.userId),
+      ),
+    ]);
+    const ownedIds = new Set(owned.map((o) => o.imageId));
+
+    return packs.map((pack) => {
+      const countByRarity: Partial<Record<Rarity, number>> = {};
+      for (const { image } of pack.packImages) {
+        countByRarity[image.rarity] = (countByRarity[image.rarity] ?? 0) + 1;
+      }
+      return {
+        id: pack.id,
+        name: pack.name,
+        description: pack.description,
+        thumbnailUrl: pack.thumbnailUrl,
+        cardCount: pack.packImages.length,
+        ownedCount: pack.packImages.filter((pi) => ownedIds.has(pi.image.id))
+          .length,
+        countByRarity,
+        odds: effectiveRates(
+          parseRarityRates(pack.rarityRates),
+          Object.keys(countByRarity) as Rarity[],
+          countByRarity,
+        ),
+        isMine: pack.userId === ctx.userId,
+        creatorName: (pack.userId && names.get(pack.userId)) || null,
+      };
     });
   }),
 
-  getById: publicProcedure
-    .input(z.object({ id: z.string() }))
-    .query(async ({ ctx, input }) => {
-      return ctx.prisma.pack.findUnique({
-        where: { id: input.id },
-        include: {
-          packImages: {
-            include: {
-              image: true,
-            },
-          },
-        },
-      });
-    }),
+  /** 工房で編集する自分のパック */
+  mine: protectedProcedure.query(async ({ ctx }) => {
+    const packs = await ctx.prisma.pack.findMany({
+      where: { userId: ctx.userId },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        thumbnailUrl: true,
+        rarityRates: true,
+        packImages: { select: { imageId: true } },
+      },
+    });
+    return packs.map(({ packImages, rarityRates, ...pack }) => ({
+      ...pack,
+      imageIds: packImages.map((pi) => pi.imageId),
+      rarityRates: parseRarityRates(rarityRates),
+    }));
+  }),
 
-  create: publicProcedure
-    .input(
-      z.object({
-        name: z.string().min(1),
-        description: z.string().optional(),
-        thumbnailUrl: z.string().optional(),
-        price: z.number().optional(),
-        packImages: z
-          .array(
-            z.object({
-              imageId: z.string(),
-              weight: z.number().min(1).default(1), // 排出率の重み（後方互換性のため残す）
-            }),
-          )
-          .min(1), // 最低1枚以上
-        rarityRates: z.string().optional(), // レア度ごとの排出率（JSON形式）
-        userId: z.string().optional(), // ポイント付与用
-      }),
-    )
+  create: protectedProcedure
+    .input(packInput)
     .mutation(async ({ ctx, input }) => {
-      const { packImages, userId, rarityRates, ...packData } = input;
-      const pack = await ctx.prisma.pack.create({
-        data: {
-          ...packData,
-          rarityRates: rarityRates || null,
-          packImages: {
-            create: packImages.map((pi) => ({
-              imageId: pi.imageId,
-              weight: pi.weight,
-            })),
-          },
-        },
-        include: {
-          packImages: {
-            include: {
-              image: true,
-            },
-          },
-        },
-      });
-
-      // パック作成時に5ポイント付与
-      if (userId) {
-        await ctx.prisma.user.update({
-          where: { id: userId },
+      const imageIds = await assertOwnImages(
+        ctx.prisma,
+        ctx.userId,
+        input.imageIds,
+      );
+      await assertOwnCover(ctx.prisma, ctx.userId, input.thumbnailUrl);
+      const [pack] = await ctx.prisma.$transaction([
+        ctx.prisma.pack.create({
           data: {
-            points: {
-              increment: 5,
-            },
+            name: input.name,
+            description: input.description || null,
+            thumbnailUrl: input.thumbnailUrl ?? null,
+            rarityRates: JSON.stringify(input.rarityRates),
+            userId: ctx.userId,
+            packImages: { create: imageIds.map((imageId) => ({ imageId })) },
           },
-        });
-      }
-
+          select: { id: true },
+        }),
+        ctx.prisma.user.update({
+          where: { id: ctx.userId },
+          data: { points: { increment: PACK_CREATE_REWARD } },
+        }),
+      ]);
       return pack;
     }),
 
-  openPack: publicProcedure
-    .input(
-      z.object({
-        packId: z.string(),
-        userId: z.string(),
-        cardCount: z.number().min(1).default(5), // 獲得するカード数
-        cost: z.number().default(5), // パック開封に必要なポイント（定数から取得することを推奨）
-      }),
-    )
+  update: protectedProcedure
+    .input(packInput.extend({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      // ユーザーのポイントを確認
-      const user = await ctx.prisma.user.findUnique({
-        where: { id: input.userId },
-        select: { points: true },
-      });
-
-      if (!user) {
-        throw new Error("User not found");
+      const imageIds = await assertOwnImages(
+        ctx.prisma,
+        ctx.userId,
+        input.imageIds,
+      );
+      const existing = await assertOwnPack(ctx.prisma, ctx.userId, input.id);
+      await assertOwnCover(
+        ctx.prisma,
+        ctx.userId,
+        input.thumbnailUrl,
+        existing.thumbnailUrl,
+      );
+      try {
+        await ctx.prisma.$transaction([
+          ctx.prisma.pack.update({
+            where: { id: input.id },
+            data: {
+              name: input.name,
+              description: input.description || null,
+              thumbnailUrl: input.thumbnailUrl ?? null,
+              rarityRates: JSON.stringify(input.rarityRates),
+            },
+          }),
+          ctx.prisma.packImage.deleteMany({ where: { packId: input.id } }),
+          ctx.prisma.packImage.createMany({
+            data: imageIds.map((imageId) => ({ packId: input.id, imageId })),
+          }),
+        ]);
+      } catch (error) {
+        throw notFoundIfMissing(error);
       }
-
-      if (user.points < input.cost) {
-        throw new Error("ポイントが不足しています");
+      if (existing.thumbnailUrl !== (input.thumbnailUrl ?? null)) {
+        await cleanupUpload(ctx.prisma, existing.thumbnailUrl);
       }
+      return { id: input.id };
+    }),
 
-      // パックを取得
+  delete: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const existing = await assertOwnPack(ctx.prisma, ctx.userId, input.id);
+      try {
+        await ctx.prisma.$transaction([
+          ctx.prisma.pack.delete({ where: { id: input.id } }),
+          ...refundBonusQueries(ctx.prisma, ctx.userId, PACK_CREATE_REWARD),
+        ]);
+      } catch (error) {
+        throw notFoundIfMissing(error);
+      }
+      await cleanupUpload(ctx.prisma, existing.thumbnailUrl);
+      return { id: input.id };
+    }),
+
+  /** ガチャを回す。ポイント消費とコレクション追加は 1 トランザクションで行う。 */
+  open: protectedProcedure
+    .input(z.object({ packId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
       const pack = await ctx.prisma.pack.findUnique({
         where: { id: input.packId },
-        include: {
+        select: {
+          rarityRates: true,
           packImages: {
-            include: {
+            select: {
               image: {
                 select: {
                   id: true,
@@ -130,256 +314,99 @@ export const packRouter = createTRPCRouter({
           },
         },
       });
-
-      if (!pack) {
-        throw new Error("Pack not found");
+      if (!pack || pack.packImages.length === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "このパックは現在引けません",
+        });
       }
 
-      // 排出率に基づいて抽選
-      type WeightedImage = {
-        image: {
-          id: string;
-          name: string;
-          description: string | null;
-          imageUrl: string;
-          rarity: string;
-          userId: string | null;
-        };
-        weight: number;
-      };
+      const drawn = drawCards(
+        pack.packImages.map((pi) => pi.image),
+        parseRarityRates(pack.rarityRates),
+        CARDS_PER_PULL,
+      );
+      const pulls = new Map<string, number>();
+      for (const card of drawn)
+        pulls.set(card.id, (pulls.get(card.id) ?? 0) + 1);
 
-      // レア度ごとの排出率を使用するか、従来のweight方式を使用するか
-      let selectedImages: Array<{
-        id: string;
-        name: string;
-        description: string | null;
-        imageUrl: string;
-        rarity: string;
-        userId: string | null;
-      }> = [];
-
-      if (pack.rarityRates) {
-        // レア度ごとの排出率を使用
-        const rarityRates: Record<string, number> = JSON.parse(
-          pack.rarityRates,
-        );
-
-        // パック内の画像をレア度ごとにグループ化
-        const imagesByRarity: Record<
-          string,
-          (typeof pack.packImages)[0]["image"][]
-        > = {};
-        pack.packImages.forEach((pi) => {
-          const rarity = pi.image.rarity;
-          if (!imagesByRarity[rarity]) {
-            imagesByRarity[rarity] = [];
-          }
-          imagesByRarity[rarity].push(pi.image);
+      // SQLite では対話型トランザクションが同時実行で詰まるため、
+      // 「条件付きで 1 文で減算」→「まとめて付与（失敗したら返金）」の順で処理する
+      const { count } = await ctx.prisma.user.updateMany({
+        where: { id: ctx.userId, points: { gte: PACK_OPEN_COST } },
+        data: { points: { decrement: PACK_OPEN_COST } },
+      });
+      if (count === 0) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: `ポイントが足りません（${PACK_OPEN_COST}pt 必要）`,
         });
+      }
 
-        // レア度ごとの排出率に基づいてカードを抽選
-        for (let i = 0; i < input.cardCount; i++) {
-          // レア度を抽選
-          const random = Math.random() * 100;
-          let cumulativeRate = 0;
-          let selectedRarity: string | null = null;
-
-          for (const [rarity, rate] of Object.entries(rarityRates)) {
-            cumulativeRate += rate;
-            if (random <= cumulativeRate) {
-              selectedRarity = rarity;
-              break;
-            }
-          }
-
-          // 選択されたレア度の画像からランダムに選択
-          if (selectedRarity && imagesByRarity[selectedRarity]?.length > 0) {
-            const rarityImages = imagesByRarity[selectedRarity];
-            const randomIndex = Math.floor(Math.random() * rarityImages.length);
-            selectedImages.push(rarityImages[randomIndex]);
-          } else {
-            // フォールバック: 全画像からランダムに選択
-            const allImages = pack.packImages.map((pi) => pi.image);
-            const randomIndex = Math.floor(Math.random() * allImages.length);
-            selectedImages.push(allImages[randomIndex]);
+      let before = new Map<string, number>();
+      let points = 0;
+      try {
+        // 同じカードの初入手が同時に起きると一意制約（P2002）で失敗するので再試行する
+        for (let attempt = 1; ; attempt++) {
+          try {
+            const existing = await ctx.prisma.userCollection.findMany({
+              where: { userId: ctx.userId, imageId: { in: [...pulls.keys()] } },
+              select: { imageId: true, count: true },
+            });
+            before = new Map(existing.map((e) => [e.imageId, e.count]));
+            const results = await ctx.prisma.$transaction([
+              ...[...pulls].map(([imageId, n]) =>
+                ctx.prisma.userCollection.upsert({
+                  where: { userId_imageId: { userId: ctx.userId, imageId } },
+                  create: { userId: ctx.userId, imageId, count: n },
+                  update: { count: { increment: n } },
+                }),
+              ),
+              ctx.prisma.user.findUniqueOrThrow({
+                where: { id: ctx.userId },
+                select: { points: true },
+              }),
+            ]);
+            points = (results[results.length - 1] as { points: number }).points;
+            break;
+          } catch (error) {
+            if (prismaErrorCode(error) !== "P2002" || attempt >= 3) throw error;
           }
         }
-      } else {
-        // 従来のweight方式（後方互換性）
-        const weightedImages: WeightedImage[] = pack.packImages.map((pi) => ({
-          image: {
-            ...pi.image,
-            userId: pi.image.userId,
-          },
-          weight: pi.weight,
-        }));
-
-        // 重み付き抽選関数
-        const selectWeightedRandom = (
-          items: WeightedImage[],
-          count: number,
-        ): WeightedImage["image"][] => {
-          const selected: WeightedImage["image"][] = [];
-          const itemsCopy = [...items];
-
-          for (let i = 0; i < count; i++) {
-            if (itemsCopy.length === 0) break;
-
-            // 総重みを計算
-            const totalWeight = itemsCopy.reduce(
-              (sum, item) => sum + item.weight,
-              0,
-            );
-
-            // ランダムな値を生成
-            let random = Math.random() * totalWeight;
-
-            // 重みに基づいて選択
-            for (let j = 0; j < itemsCopy.length; j++) {
-              random -= itemsCopy[j].weight;
-              if (random <= 0) {
-                selected.push(itemsCopy[j].image);
-                itemsCopy.splice(j, 1);
-                break;
-              }
-            }
-          }
-
-          return selected;
-        };
-
-        // カードを抽選
-        const weightedSelected = selectWeightedRandom(
-          weightedImages,
-          input.cardCount,
-        );
-        selectedImages = weightedSelected;
+      } catch (error) {
+        await ctx.prisma.user
+          .update({
+            where: { id: ctx.userId },
+            data: { points: { increment: PACK_OPEN_COST } },
+          })
+          .catch(() => {});
+        throw error;
       }
 
-      // ポイントを消費
-      await ctx.prisma.user.update({
-        where: { id: input.userId },
-        data: {
-          points: {
-            decrement: input.cost,
-          },
-        },
-      });
-
-      // 画像の作成者情報を取得
-      const imagesWithCreator = await Promise.all(
-        selectedImages.map(async (image) => {
-          let creatorName = "不明";
-          if (image.userId) {
-            const creator = await ctx.prisma.user.findUnique({
-              where: { id: image.userId },
-              select: { name: true, email: true },
-            });
-            creatorName =
-              creator?.name || creator?.email?.split("@")[0] || "不明";
-          }
-          return {
-            ...image,
-            creatorName,
-          };
-        }),
+      const names = await creatorNames(
+        ctx.prisma,
+        drawn.map((c) => c.userId),
       );
-
-      // ユーザーのコレクションに追加（枚数をカウント）
-      const collectionItems = await Promise.all(
-        selectedImages.map((image) =>
-          ctx.prisma.userCollection.upsert({
-            where: {
-              userId_imageId: {
-                userId: input.userId,
-                imageId: image.id,
-              },
-            },
-            create: {
-              userId: input.userId,
-              imageId: image.id,
-              count: 1,
-            },
-            update: {
-              count: {
-                increment: 1,
-              },
-            },
-          }),
-        ),
-      );
-
-      // 更新後のポイントを取得
-      const updatedUser = await ctx.prisma.user.findUnique({
-        where: { id: input.userId },
-        select: { points: true },
+      const running = new Map(before);
+      const cards = drawn.map((card) => {
+        const owned = (running.get(card.id) ?? 0) + 1;
+        running.set(card.id, owned);
+        return {
+          id: card.id,
+          name: card.name,
+          description: card.description,
+          imageUrl: card.imageUrl,
+          rarity: card.rarity,
+          creatorName: (card.userId && names.get(card.userId)) || null,
+          isNew: owned === 1,
+          owned,
+        };
       });
 
       return {
-        pack,
-        images: imagesWithCreator,
-        collectionItems,
-        remainingPoints: updatedUser?.points ?? 0,
+        cards,
+        best: highestRarity(cards.map((c) => c.rarity)) ?? RARITY_LIST[0],
+        points,
       };
-    }),
-
-  update: publicProcedure
-    .input(
-      z.object({
-        id: z.string(),
-        name: z.string().min(1).optional(),
-        description: z.string().optional(),
-        thumbnailUrl: z.string().optional(),
-        price: z.number().optional(),
-        packImages: z
-          .array(
-            z.object({
-              imageId: z.string(),
-              weight: z.number().min(1).default(1),
-            }),
-          )
-          .min(1)
-          .optional(),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { id, packImages, ...updateData } = input;
-
-      // 既存のパック画像を削除してから新しいものを追加
-      if (packImages) {
-        await ctx.prisma.packImage.deleteMany({
-          where: { packId: id },
-        });
-      }
-
-      return ctx.prisma.pack.update({
-        where: { id },
-        data: {
-          ...updateData,
-          ...(packImages && {
-            packImages: {
-              create: packImages.map((pi) => ({
-                imageId: pi.imageId,
-                weight: pi.weight,
-              })),
-            },
-          }),
-        },
-        include: {
-          packImages: {
-            include: {
-              image: true,
-            },
-          },
-        },
-      });
-    }),
-
-  delete: publicProcedure
-    .input(z.object({ id: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      return ctx.prisma.pack.delete({
-        where: { id: input.id },
-      });
     }),
 });
