@@ -1,36 +1,57 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PhotoGacha
 
-## Getting Started
+撮った写真が、ガチャになる。
+写真をカードにして、パックに詰めて、みんなで引き合うアプリです。
 
-First, run the development server:
+- **ガチャ** — パックを選んでハンドルを回すと、カプセルが出てきます。カプセルの色は中身の最高レア度のヒントで、SSR 以上ならドームが虹色に光ります。タップして開けたら 1 枚ずつめくります（スペースキーでも OK）。
+- **図鑑** — 引いたカードの一覧とコンプリート率。レア度で絞り込み、検索、並び替え、画像の保存ができます。
+- **工房** — 写真をカードにする（レア度つき）／自分のカードでパックを作る（排出率を設定）。
+- **ポイント** — ログインボーナスと、シャッター連打のミニゲーム。
+
+## セットアップ
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env   # NEXTAUTH_SECRET を書き換える
+npm install            # Prisma Client も生成されます
+npm run db:migrate     # SQLite にテーブルを作成
+npm run dev            # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## スクリプト
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| コマンド | 内容 |
+| --- | --- |
+| `npm run dev` / `build` / `start` | Next.js |
+| `npm run lint` | Biome（lint + format チェック） |
+| `npm run typecheck` | TypeScript |
+| `npm test` | 抽選ロジック・API のテスト（Vitest、一時 DB を使用） |
+| `npm run test:e2e` | ブラウザでの通しテスト（Playwright、要 `npm run build`） |
+| `npm run user:set-password -- <email> <password>` | 管理者がパスワードを設定する |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## ポイントのルール
 
-## Learn More
+| 操作 | ポイント |
+| --- | --- |
+| 新規登録 | +10 |
+| ガチャ 1 回（5 枚） | −5 |
+| 写真をカードにする（1 日 10 回まで） | +1（削除で返却） |
+| パックを作る（1 日 3 回まで） | +5（削除で返却） |
+| ログインボーナス（日本時間で 1 日 1 回） | +5 |
+| シャッター 10 回（1 日 30 回まで） | +1 |
 
-To learn more about Next.js, take a look at the following resources:
+## 仕組みのメモ
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- 排出率はレア度ごとに設定します。パックに入っていないレア度の枠は、入っているレア度に按分されます（ガチャ画面の「提供割合」は按分後の値）。
+- ポイントの消費は条件付きの 1 文（`points >= 5` のときだけ減算）で行うため、連打しても残高以上は引けません。
+- 引かれたカード・パックに入っているカードは削除できません（引いた人の図鑑を壊さないため）。
+- 削除時は受け取ったボーナスを返却します。返却分のポイントが足りない場合は削除できません（作成→引く→削除の繰り返しでポイントを稼げないように）。同じ画像から 2 枚目のカードは作れません。
+- アップロード画像は `data/uploads/`（`UPLOAD_DIR`）に保存し、`/uploads/[filename]` から配信します。形式はファイルの中身で判定し、SVG は受け付けません。
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 以前のバージョンからの移行
 
-## Deploy on Vercel
+`npm run db:migrate` で次の変更が入ります。
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- パスワードでのログインに変わりました。以前のアカウントにはパスワードが無いため、`npm run user:set-password` で設定してください（本人確認ができないため、登録画面からの引き継ぎはできません）。
+- メールアドレスは小文字で照合します。既存データも小文字にそろえます。
+- 以前 `public/uploads/` に保存された画像はそのまま表示されます。
+- 作成者が記録されていない以前のパックは、ガチャには並びますが編集・削除はできません。

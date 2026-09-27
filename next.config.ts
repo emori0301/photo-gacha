@@ -1,10 +1,6 @@
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
-  /* config options here */
-  env: {
-    DATABASE_URL: process.env.DATABASE_URL,
-  },
-};
+// DATABASE_URL などは実行時の環境変数から読む（ここで env に入れるとビルド時の値で固定されてしまう）
+const nextConfig: NextConfig = {};
 
 export default nextConfig;

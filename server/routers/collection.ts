@@ -1,54 +1,68 @@
-import { z } from "zod";
-import { createTRPCRouter, publicProcedure } from "@/lib/trpc/server";
+import { RARITY_LIST, type Rarity } from "@/lib/constants/rarity";
+import { createTRPCRouter, protectedProcedure } from "@/lib/trpc/server";
+import { creatorNames } from "@/server/users";
 
 export const collectionRouter = createTRPCRouter({
-  getByUserId: publicProcedure
-    .input(z.object({ userId: z.string() }))
-    .query(async ({ ctx, input }) => {
-      return ctx.prisma.userCollection.findMany({
-        where: { userId: input.userId },
-        include: {
-          image: true,
+  mine: protectedProcedure.query(async ({ ctx }) => {
+    const items = await ctx.prisma.userCollection.findMany({
+      where: { userId: ctx.userId },
+      orderBy: { obtainedAt: "desc" },
+      select: {
+        id: true,
+        count: true,
+        obtainedAt: true,
+        image: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            imageUrl: true,
+            rarity: true,
+            userId: true,
+          },
         },
-        orderBy: { obtainedAt: "desc" },
-      });
-    }),
+      },
+    });
 
-  getStats: publicProcedure
-    .input(z.object({ userId: z.string() }))
-    .query(async ({ ctx, input }) => {
-      const collections = await ctx.prisma.userCollection.findMany({
-        where: { userId: input.userId },
-        include: {
-          image: true,
-        },
-      });
+    const creatorName = await creatorNames(
+      ctx.prisma,
+      items.map((i) => i.image.userId),
+    );
 
-      const totalCount = collections.reduce(
-        (sum, c) => sum + (c.count || 1),
-        0,
-      );
-      const uniqueCount = collections.length;
+    return items.map(({ image, ...item }) => ({
+      ...item,
+      image: {
+        id: image.id,
+        name: image.name,
+        description: image.description,
+        imageUrl: image.imageUrl,
+        rarity: image.rarity,
+        creatorName: (image.userId && creatorName.get(image.userId)) || null,
+      },
+    }));
+  }),
 
-      const stats = {
-        total: totalCount, // 総枚数
-        unique: uniqueCount, // 種類数
-        byRarity: {
-          N: 0,
-          R: 0,
-          SR: 0,
-          SSR: 0,
-          UR: 0,
-        },
-      };
+  stats: protectedProcedure.query(async ({ ctx }) => {
+    const [owned, catalog, ownedInCatalog] = await Promise.all([
+      ctx.prisma.userCollection.findMany({
+        where: { userId: ctx.userId },
+        select: { count: true, image: { select: { rarity: true } } },
+      }),
+      // 図鑑の分母: いずれかのパックに入っているカード
+      ctx.prisma.image.count({ where: { packImages: { some: {} } } }),
+      ctx.prisma.userCollection.count({
+        where: { userId: ctx.userId, image: { packImages: { some: {} } } },
+      }),
+    ]);
 
-      collections.forEach((collection) => {
-        const count = collection.count || 1;
-        stats.byRarity[
-          collection.image.rarity as keyof typeof stats.byRarity
-        ] += count;
-      });
-
-      return stats;
-    }),
+    const byRarity = Object.fromEntries(
+      RARITY_LIST.map((r) => [r, 0]),
+    ) as Record<Rarity, number>;
+    let total = 0;
+    for (const item of owned) {
+      byRarity[item.image.rarity] += item.count;
+      total += item.count;
+    }
+    return { total, unique: owned.length, catalog, ownedInCatalog, byRarity };
+  }),
 });

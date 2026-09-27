@@ -1,43 +1,63 @@
-import { NextRequest, NextResponse } from "next/server";
-import { writeFile } from "fs/promises";
-import { join } from "path";
-import { mkdir } from "fs/promises";
+import { NextResponse } from "next/server";
+import { getCurrentUserId } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import {
+  ACCEPTED_IMAGE_TYPES,
+  MAX_UPLOAD_BYTES,
+  saveUpload,
+  sniffImageType,
+} from "@/server/uploads";
 
-export async function POST(request: NextRequest) {
+function fail(message: string, status: number) {
+  return NextResponse.json({ error: message }, { status });
+}
+
+export async function POST(request: Request) {
+  const userId = await getCurrentUserId();
+  if (!userId) {
+    return fail("ログインが必要です", 401);
+  }
+
+  // 本文を読み込む前にサイズを確認する（巨大なリクエストでメモリを使い切らないように）
+  const length = Number(request.headers.get("content-length"));
+  if (!Number.isFinite(length) || length <= 0) {
+    return fail("ファイルサイズを確認できませんでした", 411);
+  }
+  if (length > MAX_UPLOAD_BYTES + 64 * 1024) {
+    return fail(
+      `ファイルが大きすぎます（最大 ${MAX_UPLOAD_BYTES / 1024 / 1024}MB）`,
+      413,
+    );
+  }
+
+  let file: FormDataEntryValue | null;
   try {
-    const formData = await request.formData();
-    const file = formData.get("file") as File;
+    file = (await request.formData()).get("file");
+  } catch {
+    return fail("ファイルを読み取れませんでした", 400);
+  }
+  if (!(file instanceof File) || file.size === 0) {
+    return fail("ファイルが選択されていません", 400);
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return fail(
+      `ファイルが大きすぎます（最大 ${MAX_UPLOAD_BYTES / 1024 / 1024}MB）`,
+      413,
+    );
+  }
 
-    if (!file) {
-      return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
-    }
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const type = sniffImageType(bytes);
+  if (!type || !ACCEPTED_IMAGE_TYPES.includes(type)) {
+    return fail("JPEG / PNG / WebP / GIF / AVIF の画像を選んでください", 415);
+  }
 
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-
-    // public/uploadsディレクトリを作成
-    const uploadsDir = join(process.cwd(), "public", "uploads");
-    await mkdir(uploadsDir, { recursive: true });
-
-    // ファイル名を生成（タイムスタンプ + 元のファイル名）
-    const timestamp = Date.now();
-    const filename = `${timestamp}-${file.name}`;
-    const filepath = join(uploadsDir, filename);
-
-    // ファイルを保存
-    await writeFile(filepath, buffer);
-
-    // パスを返す（/uploads/...）
-    const imageUrl = `/uploads/${filename}`;
-
+  try {
+    const imageUrl = await saveUpload(bytes, type);
+    await prisma.upload.create({ data: { url: imageUrl, userId } });
     return NextResponse.json({ imageUrl });
   } catch (error) {
     console.error("Upload error:", error);
-    return NextResponse.json(
-      { error: "Failed to upload file" },
-      { status: 500 },
-    );
+    return fail("保存に失敗しました", 500);
   }
 }
-
-

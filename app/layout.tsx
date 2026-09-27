@@ -1,39 +1,55 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import {
+  Dela_Gothic_One,
+  DM_Mono,
+  Zen_Kaku_Gothic_New,
+} from "next/font/google";
+import { Providers } from "@/components/providers";
 import "./globals.css";
-import { TRPCProvider } from "@/components/providers/trpc-provider";
-import { AuthProvider } from "@/components/auth/auth-provider";
-import { Toaster } from "sonner";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const display = Dela_Gothic_One({
+  weight: "400",
   subsets: ["latin"],
+  variable: "--font-dela",
+  display: "swap",
+  preload: false,
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const body = Zen_Kaku_Gothic_New({
+  weight: ["400", "500", "700"],
   subsets: ["latin"],
+  variable: "--font-zen",
+  display: "swap",
+  preload: false,
+});
+
+const mono = DM_Mono({
+  weight: ["400", "500"],
+  subsets: ["latin"],
+  variable: "--font-dmmono",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "PhotoGacha",
-  description: "画像を集めてガチャを楽しもう！",
+  title: { default: "PhotoGacha", template: "%s | PhotoGacha" },
+  description:
+    "撮った写真が、ガチャになる。写真をカードにして、パックを作って、みんなで引き合おう。",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#f4efe6",
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ja">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <AuthProvider>
-          <TRPCProvider>{children}</TRPCProvider>
-        </AuthProvider>
-        <Toaster position="top-center" richColors />
+    <html
+      lang="ja"
+      className={`${display.variable} ${body.variable} ${mono.variable}`}
+    >
+      <body className="antialiased">
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
