@@ -52,6 +52,8 @@ async function uploadCard(
     .click();
   await page.getByRole("button", { name: "カードにする" }).click();
   await expect(page.getByText("カードにしました").first()).toBeVisible();
+  // 前のカードのトーストが残っていると上の確認はすぐ通るので、送信が終わってフォームが空になるまで待つ
+  await expect(page.getByLabel("タイトル")).toHaveValue("");
 }
 
 test("登録 → カード作成 → パック作成 → ガチャ → 図鑑", async ({
@@ -277,4 +279,115 @@ test("アップロード API は未ログインと非画像を拒否する", asy
   expect(res.status()).toBe(401);
   const traversal = await request.get("/uploads/..%2F..%2F.env");
   expect(traversal.status()).toBe(404);
+});
+
+test("ホーム画面に追加できる（マニフェスト・アイコン・オフライン画面）", async ({
+  page,
+  context,
+  request,
+}) => {
+  const res = await request.get("/manifest.webmanifest");
+  expect(res.ok()).toBe(true);
+  const manifest = await res.json();
+  expect(manifest).toMatchObject({ display: "standalone", start_url: "/" });
+  expect(manifest.icons.map((i: { purpose: string }) => i.purpose)).toContain(
+    "maskable",
+  );
+  for (const src of [
+    ...manifest.icons.map((i: { src: string }) => i.src),
+    "/apple-icon.png",
+  ]) {
+    const icon = await request.get(src);
+    expect(icon.ok(), src).toBe(true);
+    expect(icon.headers()["content-type"], src).toBe("image/png");
+  }
+
+  await page.goto("/");
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute(
+    "href",
+    "/manifest.webmanifest",
+  );
+  // Service Worker が動き出したら、電波が無くてもブラウザのエラー画面ではなくオフライン画面が出る
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await context.setOffline(true);
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "オフラインです" }),
+  ).toBeVisible();
+  // つながったら元の画面に戻る
+  await context.setOffline(false);
+  await expect(
+    page.getByRole("heading", { name: "おかえりなさい" }),
+  ).toBeVisible();
+});
+
+test("インストールできるブラウザでは、追加の案内から確認を出せる", async ({
+  page,
+}) => {
+  await register(page, "installer");
+  const banner = page.getByRole("complementary", { name: "アプリとして使う" });
+  await expect(banner).toBeHidden();
+
+  // Chrome が出す beforeinstallprompt の代わり
+  const offerInstall = () =>
+    page.evaluate(() => {
+      const event = Object.assign(
+        new Event("beforeinstallprompt", { cancelable: true }),
+        {
+          prompt: async () => {
+            (window as { prompted?: boolean }).prompted = true;
+          },
+          userChoice: Promise.resolve({ outcome: "accepted" }),
+        },
+      );
+      window.dispatchEvent(event);
+    });
+
+  await offerInstall();
+  await expect(banner).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await banner.getByRole("button", { name: "追加する" }).click();
+  await expect(banner).toBeHidden();
+  expect(
+    await page.evaluate(() => (window as { prompted?: boolean }).prompted),
+  ).toBe(true);
+
+  // 読み込み直して、画面が動き出す（ポイントが表示される）まで待つ
+  const reload = async () => {
+    await page.reload();
+    await expect(
+      page.getByRole("link", { name: /所持ポイント \d+pt/ }),
+    ).toBeVisible();
+  };
+
+  // 閉じたら、次に開いたときも出さない
+  await reload();
+  await offerInstall();
+  await banner.getByRole("button", { name: "案内を閉じる" }).click();
+  await expect(banner).toBeHidden();
+  await reload();
+  await offerInstall();
+  await expect(banner).toBeHidden();
+});
+
+test.describe("iPhone", () => {
+  test.use({
+    userAgent:
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1",
+  });
+
+  test("共有メニューから追加する手順を案内する", async ({ page }, info) => {
+    await register(page, "iphone");
+    const banner = page.getByRole("complementary", {
+      name: "アプリとして使う",
+    });
+    await banner.getByRole("button", { name: "追加する" }).click();
+    const steps = page.getByRole("dialog", { name: "ホーム画面に追加する" });
+    await expect(steps.getByText("「ホーム画面に追加」")).toBeVisible();
+    await page.screenshot({
+      path: `test-results/${info.project.name}-install-ios.png`,
+    });
+    await steps.getByRole("button", { name: "閉じる" }).click();
+    await expect(banner).toBeVisible();
+  });
 });

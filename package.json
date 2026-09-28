@@ -13,7 +13,8 @@
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "test:e2e": "playwright test",
-    "user:set-password": "tsx --tsconfig tsconfig.json scripts/set-password.ts"
+    "user:set-password": "tsx --tsconfig tsconfig.json scripts/set-password.ts",
+    "icons": "tsx scripts/generate-icons.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.0",

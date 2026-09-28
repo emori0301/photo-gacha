@@ -34,10 +34,21 @@ export const metadata: Metadata = {
   title: { default: "PhotoGacha", template: "%s | PhotoGacha" },
   description:
     "撮った写真が、ガチャになる。写真をカードにして、パックを作って、みんなで引き合おう。",
+  applicationName: "PhotoGacha",
+  // iPhone でホーム画面に追加したときの名前と、上のステータスバーの見た目（明るい地に黒い文字）
+  appleWebApp: {
+    capable: true,
+    title: "PhotoGacha",
+    statusBarStyle: "default",
+  },
+  // ポイントなどの数字が電話番号のリンクにならないように
+  formatDetection: { telephone: false },
 };
 
 export const viewport: Viewport = {
   themeColor: "#f4efe6",
+  // ホーム画面から開いたとき、画面の端（ホームバーの裏）まで使う。重ならない余白は env(safe-area-inset-*) で取る
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
