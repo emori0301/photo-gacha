@@ -95,7 +95,7 @@ export function RevealOverlay({
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-[#171412]/97 backdrop-blur-sm data-[state=open]:animate-fade-in" />
         <DialogPrimitive.Content
-          className="fixed inset-0 z-50 flex flex-col text-paper outline-none"
+          className="fixed inset-0 z-50 flex flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] text-paper outline-none"
           // 開いたら「めくる」ボタンにフォーカスし、スペース/Enter でめくれるようにする
           onOpenAutoFocus={(e) => {
             e.preventDefault();

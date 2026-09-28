@@ -94,7 +94,7 @@ export function RateEditor({
                   value={rates[r]}
                   onChange={(e) => set(r, e.target.valueAsNumber)}
                   aria-label={`${r} の排出率（数値）`}
-                  className="h-9 w-full rounded-lg border-2 border-ink bg-card pr-6 pl-2 text-right font-mono text-sm outline-none focus-visible:shadow-[0_0_0_3px_var(--color-mustard)]"
+                  className="h-9 w-full rounded-lg border-2 border-ink bg-card pr-6 pl-2 text-right font-mono text-base outline-none focus-visible:shadow-[0_0_0_3px_var(--color-mustard)]"
                 />
                 <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-xs text-ink-3">
                   %

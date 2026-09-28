@@ -8,9 +8,10 @@ import {
 } from "@tanstack/react-query";
 import { httpBatchLink, TRPCClientError } from "@trpc/client";
 import { SessionProvider, signOut } from "next-auth/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Toaster } from "sonner";
 import superjson from "superjson";
+import { registerServiceWorker } from "@/lib/client/pwa";
 import { trpc } from "@/lib/trpc/client";
 
 /** セッション切れ（DB リセット等）を検知したらログイン画面へ戻す */
@@ -44,6 +45,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
       links: [httpBatchLink({ url: "/api/trpc", transformer: superjson })],
     }),
   );
+
+  useEffect(() => {
+    registerServiceWorker();
+  }, []);
 
   return (
     <SessionProvider refetchOnWindowFocus={false}>

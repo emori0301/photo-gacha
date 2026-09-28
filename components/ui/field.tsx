@@ -1,8 +1,9 @@
 import type * as React from "react";
 import { cn } from "@/lib/utils";
 
+// 文字は 16px 以上にする（iPhone は 16px 未満の入力欄にフォーカスすると画面を拡大し、そのまま戻らない）
 const control =
-  "w-full rounded-xl border-2 border-ink bg-card px-3.5 text-[15px] text-ink placeholder:text-ink-3 outline-none transition-shadow focus-visible:shadow-[0_0_0_3px_var(--color-mustard)] focus-visible:outline-none disabled:opacity-50 aria-invalid:border-red-deep";
+  "w-full rounded-xl border-2 border-ink bg-card px-3.5 text-base text-ink placeholder:text-ink-3 outline-none transition-shadow focus-visible:shadow-[0_0_0_3px_var(--color-mustard)] focus-visible:outline-none disabled:opacity-50 aria-invalid:border-red-deep";
 
 export function Input({ className, ...props }: React.ComponentProps<"input">) {
   return <input className={cn(control, "h-11", className)} {...props} />;
