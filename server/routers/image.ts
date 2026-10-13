@@ -7,12 +7,7 @@ import {
 import { RARITY_LIST } from "@/lib/constants/rarity";
 import { createTRPCRouter, protectedProcedure } from "@/lib/trpc/server";
 import { uploadUrlSchema } from "@/lib/validation";
-import {
-  giveBack,
-  grantDailyReward,
-  prismaErrorCode,
-  takeBackReward,
-} from "@/server/points";
+import { giveBack, grantDailyReward, takeBackReward } from "@/server/points";
 import { cleanupUpload } from "@/server/uploads";
 
 const nameSchema = z
@@ -171,18 +166,28 @@ export const imageRouter = createTRPCRouter({
           message: `登録ボーナスの ${image.bonusGranted}pt を返却できないため削除できません。ポイントを貯めてからもう一度どうぞ`,
         });
       }
+      // 確認のあとでパックに入った・引かれた場合に備えて、「使われていなければ消す」を 1 文で行う。
+      // Turso では外部キー制約が効かないことがあるので、制約には頼らない
+      let deleted: number;
       try {
-        await ctx.prisma.image.delete({ where: { id: input.id } });
+        ({ count: deleted } = await ctx.prisma.image.deleteMany({
+          where: {
+            id: input.id,
+            userId: ctx.userId,
+            packImages: { none: {} },
+            collections: { none: {} },
+          },
+        }));
       } catch (error) {
         await giveBack(ctx.prisma, ctx.userId, image.bonusGranted);
-        // 確認後にパックへ追加された・引かれた場合は外部キー制約で失敗する
-        if (prismaErrorCode(error) === "P2003") {
-          throw new TRPCError({
-            code: "PRECONDITION_FAILED",
-            message: "使用中の写真なので削除できません",
-          });
-        }
         throw error;
+      }
+      if (deleted === 0) {
+        await giveBack(ctx.prisma, ctx.userId, image.bonusGranted);
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "使用中の写真なので削除できません",
+        });
       }
       await cleanupUpload(ctx.prisma, image.imageUrl);
       return { id: input.id };

@@ -9,6 +9,7 @@ import { Field, Input, Textarea } from "@/components/ui/field";
 import {
   ACCEPT_IMAGES,
   checkImageFile,
+  MAX_UPLOAD_MB,
   uploadImage,
 } from "@/lib/client/upload";
 import {
@@ -142,7 +143,7 @@ export function PhotoUploader() {
             <span className="text-xs text-ink-2">
               ドラッグ&ドロップでも OK
               <br />
-              最大 8MB
+              最大 {MAX_UPLOAD_MB}MB
             </span>
           </label>
         )}

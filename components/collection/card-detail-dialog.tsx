@@ -25,6 +25,15 @@ export type CollectedCard = {
 };
 
 async function download(url: string, name: string) {
+  // Vercel Blob の画像は別のドメインにあるので読み込めない。保存用の URL（?download=1）を開く
+  if (/^https:\/\//.test(url)) {
+    const a = document.createElement("a");
+    a.href = `${url}?download=1`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    return;
+  }
   const res = await fetch(url);
   if (!res.ok) throw new Error("download failed");
   const blob = await res.blob();

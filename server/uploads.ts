@@ -1,9 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { del, put } from "@vercel/blob";
 import type { PrismaClient } from "@/lib/generated/prisma/client";
+import { BLOB_URL_PATTERN } from "@/lib/validation";
 
-export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+/**
+ * 1 回に受け取る画像の上限。Vercel は 4.5MB を超えるリクエストを受け付けないので、それより小さくする。
+ * スマホの写真はブラウザ側で縮めてから送る（lib/client/upload.ts）。
+ */
+export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 
 const EXT_BY_MIME: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -67,12 +73,35 @@ export function sniffImageType(bytes: Uint8Array): string | null {
   return null;
 }
 
+/**
+ * 画像の保存先。Vercel では Vercel Blob（BLOB_READ_WRITE_TOKEN があるとき）、手元ではディスク（uploadDir）。
+ * Vercel のディスクは書き込めず、再起動で消えるので使えない。
+ */
+function blobEnabled() {
+  if (process.env.BLOB_READ_WRITE_TOKEN) return true;
+  if (process.env.VERCEL) {
+    throw new Error(
+      "BLOB_READ_WRITE_TOKEN がありません。Vercel の Storage で Blob ストアを作り、このプロジェクトにつないでください",
+    );
+  }
+  return false;
+}
+
 export async function saveUpload(bytes: Uint8Array, mime: string) {
   const ext = EXT_BY_MIME[mime];
   if (!ext) throw new Error("unsupported type");
+  const filename = `${randomUUID()}.${ext}`;
+  if (blobEnabled()) {
+    const blob = await put(`uploads/${filename}`, Buffer.from(bytes), {
+      access: "public",
+      contentType: mime,
+      // ファイル名は毎回新しいので、ずっとキャッシュしてよい
+      cacheControlMaxAge: 60 * 60 * 24 * 365,
+    });
+    return blob.url;
+  }
   const dir = uploadDir();
   await mkdir(dir, { recursive: true });
-  const filename = `${randomUUID()}.${ext}`;
   await writeFile(path.join(/*turbopackIgnore: true*/ dir, filename), bytes);
   return `/uploads/${filename}`;
 }
@@ -91,6 +120,12 @@ export async function readUpload(filename: string) {
 
 /** 参照が無くなったアップロードを消す（失敗しても処理は続行） */
 export async function removeUpload(url: string | null | undefined) {
+  if (url && BLOB_URL_PATTERN.test(url)) {
+    await del(url).catch((error) =>
+      console.error("Blob delete failed:", error),
+    );
+    return;
+  }
   const filename = url?.startsWith("/uploads/") ? url.slice(9) : null;
   if (!filename || !isSafeFilename(filename)) return;
   for (const dir of [uploadDir(), legacyUploadDir()]) {

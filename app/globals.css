@@ -126,6 +126,15 @@
   }
 }
 
+/*
+ * px-4 と同じ余白。ただしホーム画面から開いたアプリ（viewport-fit=cover）を横向きにしたときは、
+ * ノッチに中身が潜らないよう、その分だけ広げる。
+ */
+@utility px-safe {
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+
 /* ---------- カード（写真カード）の見た目 ---------- */
 
 .photo-card {

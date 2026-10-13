@@ -15,6 +15,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc/client";
 import { cn } from "@/lib/utils";
+import { InstallBanner } from "./install-banner";
 import { Logo } from "./logo";
 import { PointsPill } from "./points-pill";
 
@@ -36,7 +37,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="sticky top-0 z-40 border-b-2 border-ink bg-paper/92 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b-2 border-ink bg-paper/92 pt-[env(safe-area-inset-top)] backdrop-blur">
+        {/* 左右は px-safe にしない。横向きのノッチは画面の高さの中ほどにあってヘッダーには掛からず、広げると上のナビが折り返す */}
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-2 px-4 sm:gap-4">
           <Link href="/" aria-label="PhotoGacha ホーム" className="shrink-0">
             <Logo />
@@ -96,7 +98,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 pt-6 pb-28 md:pb-16">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-safe pt-6 pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-16">
         {children}
       </main>
 
@@ -132,6 +134,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </ul>
       </nav>
+
+      <InstallBanner />
     </div>
   );
 }
