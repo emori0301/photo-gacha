@@ -141,7 +141,8 @@ export function LoginScreen() {
         </div>
       </section>
 
-      <section className="flex flex-col items-center justify-center px-4 py-10">
+      {/* 上下中央にすると「ログイン」「はじめる」でフォームの高さが変わるたびに切り替えボタンが動くので、上からの位置を固定する */}
+      <section className="flex flex-col items-center px-4 pt-[max(2.5rem,12dvh)] pb-10">
         <div className="w-full max-w-sm">
           <div className="mb-8 lg:hidden">
             <Logo />
