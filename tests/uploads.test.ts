@@ -103,6 +103,13 @@ describe("保存先", () => {
     expect(del).toHaveBeenCalledWith(url);
   });
 
+  it("今の Vercel の方式（BLOB_STORE_ID）でも Vercel Blob に保存する", async () => {
+    vi.stubEnv("BLOB_STORE_ID", "store_abc123");
+    const url = await saveUpload(new Uint8Array([1, 2, 3]), "image/png");
+    expect(put).toHaveBeenCalled();
+    expect(url).toMatch(/^https:\/\/.+\/uploads\/[0-9a-f-]+\.png$/);
+  });
+
   it("手元ではディスクに保存する", async () => {
     const url = await saveUpload(new Uint8Array([1, 2, 3]), "image/png");
     expect(url).toMatch(/^\/uploads\/[0-9a-f-]+\.png$/);
@@ -114,9 +121,10 @@ describe("保存先", () => {
   it("Vercel でトークンが無ければ、分かるエラーにする", async () => {
     vi.stubEnv("VERCEL", "1");
     vi.stubEnv("BLOB_READ_WRITE_TOKEN", "");
+    vi.stubEnv("BLOB_STORE_ID", "");
     await expect(
       saveUpload(new Uint8Array([1, 2, 3]), "image/png"),
-    ).rejects.toThrow("BLOB_READ_WRITE_TOKEN");
+    ).rejects.toThrow("Blob ストアがつながっていません");
   });
 });
 
