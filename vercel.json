@@ -1,0 +1,5 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run db:migrate:turso && npm run build",
+  "regions": ["hnd1"]
+}

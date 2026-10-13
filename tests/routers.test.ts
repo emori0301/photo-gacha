@@ -168,6 +168,10 @@ describe("image", () => {
       "/uploads/../.env",
       "/uploads/a/b.png",
       "javascript:alert(1)",
+      // Vercel Blob に似せた URL
+      "http://store.public.blob.vercel-storage.com/uploads/x.png",
+      "https://store.public.blob.vercel-storage.com.evil.example/uploads/x.png",
+      "https://store.public.blob.vercel-storage.com/other/x.png",
     ]) {
       await expect(
         api.image.create({ name: "x", imageUrl, rarity: "N" }),
@@ -175,6 +179,18 @@ describe("image", () => {
         code: "BAD_REQUEST",
       });
     }
+  });
+
+  it("Vercel Blob に保存した画像もカードにできる", async () => {
+    const { user, api } = await makeUser("alice");
+    const url = `https://store1.public.blob.vercel-storage.com/uploads/${Math.random().toString(36).slice(2)}.webp`;
+    await prisma.upload.create({ data: { url, userId: user.id } });
+    const photo = await api.image.create({
+      name: "blob",
+      imageUrl: url,
+      rarity: "N",
+    });
+    expect(photo.imageUrl).toBe(url);
   });
 
   it("他人がアップロードした画像はカードにもカバーにもできない", async () => {

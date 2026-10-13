@@ -1,6 +1,8 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../lib/generated/prisma"
+  provider   = "prisma-client"
+  output     = "../lib/generated/prisma"
+  // Rust のエンジンを使わず、lib/prisma.ts の libSQL アダプター経由で接続する（Vercel に載せやすい）
+  engineType = "client"
 }
 
 datasource db {

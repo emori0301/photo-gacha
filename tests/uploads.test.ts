@@ -1,10 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { del, put } from "@vercel/blob";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { nextJstDay, startOfJstDay } from "@/server/time";
 import {
   isSafeFilename,
   mimeForFilename,
+  removeUpload,
+  saveUpload,
   sniffImageType,
 } from "@/server/uploads";
+
+vi.mock("@vercel/blob", () => ({
+  put: vi.fn(async (pathname: string) => ({
+    url: `https://store1.public.blob.vercel-storage.com/${pathname}`,
+  })),
+  del: vi.fn(async () => {}),
+}));
 
 const bytes = (...values: (number | string)[]) =>
   new Uint8Array(
@@ -69,5 +79,69 @@ describe("resolveDatabaseUrl", async () => {
     );
     expect(resolveDatabaseUrl("file:/tmp/a.db")).toBe("file:/tmp/a.db");
     expect(resolveDatabaseUrl(undefined)).toBeUndefined();
+  });
+});
+
+describe("保存先", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.clearAllMocks();
+  });
+
+  it("BLOB_READ_WRITE_TOKEN があれば Vercel Blob に保存し、消すときも Blob から消す", async () => {
+    vi.stubEnv("BLOB_READ_WRITE_TOKEN", "test-token");
+    const url = await saveUpload(new Uint8Array([1, 2, 3]), "image/webp");
+    expect(url).toMatch(
+      /^https:\/\/store1\.public\.blob\.vercel-storage\.com\/uploads\/[0-9a-f-]+\.webp$/,
+    );
+    expect(put).toHaveBeenCalledWith(
+      expect.stringMatching(/^uploads\/.+\.webp$/),
+      expect.any(Buffer),
+      expect.objectContaining({ access: "public", contentType: "image/webp" }),
+    );
+    await removeUpload(url);
+    expect(del).toHaveBeenCalledWith(url);
+  });
+
+  it("手元ではディスクに保存する", async () => {
+    const url = await saveUpload(new Uint8Array([1, 2, 3]), "image/png");
+    expect(url).toMatch(/^\/uploads\/[0-9a-f-]+\.png$/);
+    expect(put).not.toHaveBeenCalled();
+    await removeUpload(url);
+    expect(del).not.toHaveBeenCalled();
+  });
+
+  it("Vercel でトークンが無ければ、分かるエラーにする", async () => {
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("BLOB_READ_WRITE_TOKEN", "");
+    await expect(
+      saveUpload(new Uint8Array([1, 2, 3]), "image/png"),
+    ).rejects.toThrow("BLOB_READ_WRITE_TOKEN");
+  });
+});
+
+describe("databaseEnv", async () => {
+  const { databaseEnv } = await import("@/lib/database-env");
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("Vercel の Turso 連携が入れる TURSO_* を優先する", () => {
+    vi.stubEnv("DATABASE_URL", "file:./dev.db");
+    vi.stubEnv("TURSO_DATABASE_URL", "libsql://db-user.turso.io");
+    vi.stubEnv("TURSO_AUTH_TOKEN", "token");
+    expect(databaseEnv()).toEqual({
+      url: "libsql://db-user.turso.io",
+      authToken: "token",
+    });
+  });
+
+  it("無ければ DATABASE_URL を使う", () => {
+    vi.stubEnv("DATABASE_URL", "file:./dev.db");
+    vi.stubEnv("TURSO_DATABASE_URL", "");
+    vi.stubEnv("TURSO_AUTH_TOKEN", "");
+    vi.stubEnv("DATABASE_AUTH_TOKEN", "");
+    expect(databaseEnv()).toEqual({
+      url: "file:./dev.db",
+      authToken: undefined,
+    });
   });
 });

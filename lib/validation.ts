@@ -17,9 +17,19 @@ export const displayNameSchema = z
   .min(1, "名前を入力してください")
   .max(24, "名前は 24 文字以内にしてください");
 
-/** アップロード API が返した /uploads/<ファイル名> 形式のみ許可する */
+/** Vercel Blob に保存した画像の URL（https://<ストア>.public.blob.vercel-storage.com/uploads/<ファイル名>） */
+export const BLOB_URL_PATTERN =
+  /^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\/uploads\/[A-Za-z0-9._-]+$/;
+
+/**
+ * アップロード API が返した形式のみ許可する。
+ * 手元では /uploads/<ファイル名>、Vercel では Vercel Blob の URL。
+ */
 export const uploadUrlSchema = z
   .string()
   .max(300)
-  .regex(/^\/uploads\/[^/\\?#]+$/, "画像のパスが不正です")
+  .refine(
+    (url) => /^\/uploads\/[^/\\?#]+$/.test(url) || BLOB_URL_PATTERN.test(url),
+    "画像のパスが不正です",
+  )
   .refine((url) => !url.includes(".."), "画像のパスが不正です");

@@ -234,6 +234,45 @@ test("ログイン・ログアウト・エラー表示", async ({ page }) => {
   );
 });
 
+test("大きな写真は送る前に縮めてからカードにする", async ({
+  page,
+  request,
+}) => {
+  await register(page, "bigphoto");
+  await page.getByRole("link", { name: "工房" }).first().click();
+  // サーバーの上限（4MB）を超える、スマホの写真くらいの大きさ
+  const big = await sharp({
+    create: {
+      width: 3000,
+      height: 4000,
+      channels: 3,
+      background: "#808080",
+      noise: { type: "gaussian", mean: 128, sigma: 40 },
+    },
+  })
+    .jpeg({ quality: 95 })
+    .toBuffer();
+  expect(big.length).toBeGreaterThan(4 * 1024 * 1024);
+  await page.locator('input[type="file"]').first().setInputFiles({
+    name: "big.jpg",
+    mimeType: "image/jpeg",
+    buffer: big,
+  });
+  await page.getByLabel("タイトル").fill("大きな写真");
+  await page.getByRole("button", { name: "カードにする" }).click();
+  await expect(page.getByText("カードにしました").first()).toBeVisible();
+
+  const src = await page
+    .getByRole("img", { name: "大きな写真" })
+    .first()
+    .getAttribute("src");
+  expect(src).toMatch(/\.webp$/);
+  const saved = await (await request.get(src as string)).body();
+  const meta = await sharp(saved).metadata();
+  expect(Math.max(meta.width ?? 0, meta.height ?? 0)).toBe(1440);
+  expect(saved.length).toBeLessThan(4 * 1024 * 1024);
+});
+
 test("空白の無い長いタイトルでもダイアログからはみ出さない", async ({
   page,
 }) => {

@@ -287,7 +287,11 @@ export const packRouter = createTRPCRouter({
         });
       }
       try {
-        await ctx.prisma.pack.delete({ where: { id: input.id } });
+        // パックの中身も一緒に消す（Turso では外部キーの連鎖削除が効かないことがあるので、明示する）
+        await ctx.prisma.$transaction([
+          ctx.prisma.packImage.deleteMany({ where: { packId: input.id } }),
+          ctx.prisma.pack.delete({ where: { id: input.id } }),
+        ]);
       } catch (error) {
         await giveBack(ctx.prisma, ctx.userId, existing.bonusGranted);
         throw notFoundIfMissing(error);
