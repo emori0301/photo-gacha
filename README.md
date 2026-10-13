@@ -27,7 +27,7 @@
    「Environment Variables」に `NEXTAUTH_SECRET`（長いランダムな文字列。例: `openssl rand -base64 32` の結果）を追加して「Deploy」。
    **1 回目はデータベースがまだ無いので失敗しますが、そのままで大丈夫です。**
 3. **データベースをつなぐ** — プロジェクトの「Storage」タブ →「Create Database」→「Turso」。地域を選べるときは Tokyo（ap-northeast-1）。作ったらこのプロジェクトにつなぐ（`TURSO_DATABASE_URL` と `TURSO_AUTH_TOKEN` が自動で入ります）。
-4. **写真の置き場をつなぐ** — 同じ「Storage」タブ →「Create」→「Blob」。公開設定は **Public** を選び、このプロジェクトにつなぐ（`BLOB_READ_WRITE_TOKEN` が自動で入ります）。
+4. **写真の置き場をつなぐ** — 同じ「Storage」タブ →「Create」→「Blob」。公開設定は **Public** を選び、このプロジェクトにつなぐ（`BLOB_STORE_ID` が自動で入ります。以前の方式の `BLOB_READ_WRITE_TOKEN` でも動きます）。
 5. **もう一度デプロイする** — 「Deployments」タブで最新のものの「…」→「Redeploy」。ビルドの途中でテーブルが作られます。
 6. 表示された `https://<プロジェクト名>.vercel.app` を開けば完成です。スマホで開いて「ホーム画面に追加」すれば、アプリとして使えます。
 

@@ -19,7 +19,7 @@ export const displayNameSchema = z
 
 /** Vercel Blob に保存した画像の URL（https://<ストア>.public.blob.vercel-storage.com/uploads/<ファイル名>） */
 export const BLOB_URL_PATTERN =
-  /^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\/uploads\/[A-Za-z0-9._-]+$/;
+  /^https:\/\/[A-Za-z0-9-]+\.public\.blob\.vercel-storage\.com\/uploads\/[A-Za-z0-9._-]+$/;
 
 /**
  * アップロード API が返した形式のみ許可する。

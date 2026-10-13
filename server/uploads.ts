@@ -74,14 +74,18 @@ export function sniffImageType(bytes: Uint8Array): string | null {
 }
 
 /**
- * 画像の保存先。Vercel では Vercel Blob（BLOB_READ_WRITE_TOKEN があるとき）、手元ではディスク（uploadDir）。
+ * 画像の保存先。Vercel では Vercel Blob、手元ではディスク（uploadDir）。
  * Vercel のディスクは書き込めず、再起動で消えるので使えない。
+ * Vercel の Storage で Blob ストアをつなぐと BLOB_STORE_ID（今の方式。認証は Vercel が自動で行う）か、
+ * BLOB_READ_WRITE_TOKEN（以前の方式）が入る。
  */
 function blobEnabled() {
-  if (process.env.BLOB_READ_WRITE_TOKEN) return true;
+  if (process.env.BLOB_STORE_ID || process.env.BLOB_READ_WRITE_TOKEN) {
+    return true;
+  }
   if (process.env.VERCEL) {
     throw new Error(
-      "BLOB_READ_WRITE_TOKEN がありません。Vercel の Storage で Blob ストアを作り、このプロジェクトにつないでください",
+      "Blob ストアがつながっていません（BLOB_STORE_ID がありません）。Vercel の Storage で Blob ストアを作り、このプロジェクトにつないでください",
     );
   }
   return false;
