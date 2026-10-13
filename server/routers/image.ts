@@ -7,11 +7,7 @@ import {
 import { RARITY_LIST } from "@/lib/constants/rarity";
 import { createTRPCRouter, protectedProcedure } from "@/lib/trpc/server";
 import { uploadUrlSchema } from "@/lib/validation";
-import {
-  giveBack,
-  grantDailyReward,
-  takeBackReward,
-} from "@/server/points";
+import { giveBack, grantDailyReward, takeBackReward } from "@/server/points";
 import { cleanupUpload } from "@/server/uploads";
 
 const nameSchema = z
